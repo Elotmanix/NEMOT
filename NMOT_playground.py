@@ -6,6 +6,10 @@ import torch.nn.functional as F
 from timeit import default_timer as timer
 import os
 from config import PreprocessMeta
+from data_fns import gen_data, QuadCost
+from models import Net_EOT, NE_mot_model
+from TaosBiEOT import dual_loss
+
 
 
 """
@@ -26,9 +30,18 @@ def main():
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['cuda_visible'])
     device = torch.device("cuda:0" if (torch.cuda.is_available() and params['device'] == 'gpu') else "cpu")
     print(f"Using {device}")
+    print(params)
 
     X = gen_data(params)
     X = X.to(device)
+
+    # d = params['dims'][0]
+    # n = params['n']
+    #
+    # X = torch.from_numpy(
+    #     np.random.uniform(-1 / np.sqrt(d), 1 / np.sqrt(d), (n, d))).float().to(device)  # uniform [-1/sqrt(d),1/sqrt(d)]^d
+    # Y = torch.from_numpy(np.random.uniform(-1 / np.sqrt(d), 1 / np.sqrt(d), (n, d))).float().to(device)
+    # X = torch.stack([X,Y], dim=-1)
 
     if params['alg'] == 'ne_mot':
         MOT_agent = MOT_NE_alg(params, device)
@@ -39,77 +52,11 @@ def main():
 
 
 ########
-def gen_params():
-    params = {
-        'batch_size': 128,
-        'epochs': 2000,
-        'lr': 1e-4,
-        'n': 50000,
-        'k': 2,
-        'eps': 0.5,
-        'cost': 'quad',  # options - quad, quad_gw, ip_gw
-        'alg': 'ne_mot',        #options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
-        'hidden_dim': 32,
-        'mod': 'mot',       #options - mot, mgw
-        'seed': 42,
-        'data_dist': 'uniform',
-        # 'dims': [1,1,1,1,1,1,1,1],
-        # 'dims': [100,100,100,100,100,100,100,100],
-        'dims': [5,5,5,5,5,5],
-        'device': 'gpu',
-        'cuda_visible': 0
-    }
-    # TD: ADJUST DIMS TO K
-    params['batch_size'] = min(params['batch_size'],params['n'])
-    return params
 
 
-def gen_data(params):
-    if params['data_dist'] == 'uniform':
-        # generate k samples which are d-dimensional with n samples (from Taos's notebook)
-        X = []
-        for i in range(params['k']):
-            X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
-        X = torch.from_numpy(np.stack(X, axis=-1))
-
-        if params['alg'] not in ('ne_gw','ne_mot'):
-            MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
-            return X, MU
-
-        return X
 
 
-def QuadCost(data, mod='circle'):
-    k=data.shape[-1]
-    if mod == 'circle':
-        differences = [torch.norm(data[:, :, i] - data[:, :, (i + 1) % k], dim=1) for i in range(k)]
-    elif mod == 'tree':
-        # calculate loss according to tree structure
-        pass
-    else:
-        # calculate all pairwise quadratic losses
-        ###
-        # option 1 - through broadcasting:
-        # Expand 'data' to (n, d, k, k) by repeating it across new dimensions
-        data_expanded = data.unsqueeze(3).expand(-1, -1, -1, k)
-        data_t_expanded = data.unsqueeze(2).expand(-1, -1, k, -1)
 
-        # Compute differences using broadcasting (resulting shape will be (n, d, k, k))
-        differences = data_expanded - data_t_expanded
-
-        # Compute norms (resulting shape will be (n, k, k))
-        differences = torch.norm(differences, dim=1)
-        ###
-        # option 2 - via a nested loop (doesnt use tensor operations but performs half the computations)
-        # pairwise_norms = torch.zeros((n, k, k))
-        # for i in range(k):
-        #     for j in range(i + 1, k):
-        #         pairwise_norms[:, i, j] = torch.norm(data[:, :, i] - data[:, :, j], dim=1)
-        # differences += pairwise_norms.transpose(1, 2)
-        ###
-
-
-    return differences
 
 class MOT_NE_alg():
     def __init__(self, params, device):
@@ -119,31 +66,52 @@ class MOT_NE_alg():
         self.batch_size = params['batch_size']
         self.eps = params['eps']
         for i in range(params['k']):
-            model = NE_model(dim=params['dims'][i], hidden_dim=params['hidden_dim'])
-            model.to(device)
+            # model = NE_mot_model(dim=params['dims'][i], hidden_dim=params['hidden_dim'])
+            # model.to(device)
+            ### Tao's
+            d = params['dims'][i]
+            model = Net_EOT(dim=d, K=min(6*d,80), deeper=True).to(device)
+            ###
             self.models.append(model)
         self.cost = params['cost']
         self.opt = [torch.optim.Adam(list(self.models[i].parameters()), lr=params['lr']) for i in range(self.k)]
         self.device = device
+        self.cost_graph = params['cost_graph']
 
 
     def train_mot(self, X):
+        x_b = DataLoader(X, batch_size=self.batch_size, shuffle=True)
+        tot_loss = []
+        times = []
         for epoch in range(self.num_epochs):
-            x_b = DataLoader(X, batch_size=self.batch_size, shuffle=True)
-            l = 0
+            l = []
             t0 = timer()
             for i, data in enumerate(x_b):
                 self.zero_grad_models()
                 # data.to(self.device)
                 for k_ind in range(self.k):
+                    # k-margin loss
                     phi = [self.models[i](data[:,:,i]) for i in range(self.k)]  # each phi[i] should have shape (b,1)
                     e_term = self.calc_exp_term(phi, data)
-                    loss = -(sum(phi).mean() - self.eps*e_term + self.eps)
+                    loss = -(sum(phi).mean() - self.eps*e_term)
+                    ####
+                    # bimargin loss (for debugging)
+                    # cost = self.calc_cost(data)
+                    # loss = dual_loss(pred_x = phi[0], pred_y = phi[1], cost=cost, eps=self.eps)
+                    ####
                     loss.backward()
                     self.opt[k_ind].step()
-                l -= loss.item()
-            print(f'finished epoch {epoch}, loss={-loss:.5f}, took {timer()-t0:.2f} seconds')
+                    l.append(loss.item())
+            l = np.mean(l)
+            tot_loss.append(-l+ self.eps)
+            epoch_time = timer()-t0
+            times.append(epoch_time)
+
+            print(f'finished epoch {epoch}, loss={-l+ self.eps:.5f}, took {epoch_time:.2f} seconds')
             # print(f'finished epoch {epoch}, loss={l / i}')
+        tot_loss = np.mean(tot_loss[-10:])
+        avg_time = np.mean(times)
+        print(f'Finished run, loss is {tot_loss:.5f}, average epoch time is {avg_time:.3f} seconds')
         self.models_to_eval
 
     def calc_exp_term(self, phi, x):
@@ -152,20 +120,32 @@ class MOT_NE_alg():
         # calc loss tensor
         c = self.calc_cost(x)
 
-        # calc mapping:
-        reshaped_term = []
-        reshaped_c = []
-        for index, vec in enumerate(phi):
-            # Create a shape of length k with 1s except at the index position
-            shape = [1] * self.k
-            shape[index] = -1
-            reshaped_c.append(c[index].reshape(shape))
-            reshaped_term.append(vec.reshape(shape))
+        if self.cost_graph == 'circle':
+            # calc mapping:
+            reshaped_term = []
+            reshaped_c = []
+            for index, vec in enumerate(phi):
+                # Create a shape of length k with 1s except at the index position
+                shape = [1] * self.k
+                shape[index] = -1
+                reshaped_c.append(c[index].reshape(shape))
+                reshaped_term.append(vec.reshape(shape))
+            reshaped_term = sum(reshaped_term)
+            c = sum(reshaped_c)
+        elif self.cost_graph == 'full':
+            reshaped_term = []
+            for index, vec in enumerate(phi):
+                # Create a shape of length k with 1s except at the index position
+                shape = [1] * self.k
+                shape[index] = -1
+                # shape[-index] = -1
+                reshaped_term.append(vec.reshape(shape))
+            reshaped_term = sum(reshaped_term)
+            # reshaped_term = phi[0][None, :] + phi[1][:, None]
 
-        reshaped_term = sum(reshaped_term)
-        reshaped_c = sum(reshaped_c)
 
-        return torch.mean(torch.exp((reshaped_term-reshaped_c)/self.eps))
+
+        return torch.mean(torch.exp((reshaped_term-c)/self.eps))
 
 
     def calc_cost(self, data):
@@ -175,12 +155,13 @@ class MOT_NE_alg():
         :return:
         """
         if self.cost == 'quad':
-            cost = QuadCost(data, mod='circle')
+            cost = QuadCost(data, mod=self.cost_graph)
         elif self.cost == 'quad_gw':
-            cost = QuadCostGW(data, self.matrices)
+            # IMPLEMENT - cost = QuadCostGW(data, self.matrices)
+            pass
         elif self.cost == 'ip_gw':
-            cost = IPCostGW(data, self.matrices)
-
+            # IMPLEMENT - cost = IPCostGW(data, self.matrices)
+            pass
 
         # NOW - BROADCAST!!
         return cost
@@ -194,19 +175,6 @@ class MOT_NE_alg():
             model.eval()
 
 
-class NE_model(nn.Module):
-    def __init__(self, dim, hidden_dim=32):
-        super(NE_model, self).__init__()
-        self.dim = dim
-
-        # Taos's N-GW model
-        self.fc1 = nn.Linear(dim, self.dim)
-        self.fc2 = nn.Linear(self.dim, 1)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
 
 
 
