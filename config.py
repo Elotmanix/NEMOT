@@ -47,11 +47,11 @@ def GetConfig(args):
         'run': 'debug',
         'experiment': 'synthetic_mot',
         'batch_size': 64,
-        'epochs': 200,
+        'epochs': 55,
         'lr': 5e-4,
         'n': 5000,
-        'k': 2,
-        'eps': 0.9,
+        'k': 4,
+        'eps': 0.5,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
         'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
         'hidden_dim': 32,
@@ -60,9 +60,9 @@ def GetConfig(args):
         'data_dist': 'uniform',
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dims': [5,5,5,5],
+        'dims': [13,13,13,13,13],
         'device': 'gpu',
-        'cuda_visible': 5,
+        'cuda_visible': 3,
         'using_wandb': 0,
         'cost_graph': 'full'  # The cost function graphical structure for decomposition. Options - full, circle, tree
     }

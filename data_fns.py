@@ -105,3 +105,15 @@ def QuadCost(data, mod='circle'):
                     differences += norms_reshaped
 
     return differences
+
+
+def kronecker_product(vectors):
+    for index in range(1, len(vectors)):
+        if index == 1:
+            out = np.tensordot(vectors[index - 1], vectors[index], axes=0)
+        else:
+            out = np.tensordot(out, vectors[index], axes=0)
+    return out
+
+def calc_ent(p):
+    return -np.sum(p*np.log(p))
