@@ -1,3 +1,10 @@
+import torch
+import os
+from neural_estimation.models import MOT_NE_alg
+from utils.config import PreprocessMeta
+from sinkhorn.sinkhorn_utils import MOT_Sinkhorn
+from utils.data_fns import gen_data
+
 def main():
     # TD:
     params = PreprocessMeta()
@@ -16,8 +23,9 @@ def main():
         MOT_agent = MOT_NE_alg(params, device)
         MOT_agent.train_mot(X)
     elif params.alg == 'sinkhorn_mot':
+        assert params.n <= 750, "Error Message: n is too big for sinkhorn algorithm."
         (X,MU) = X
-        MOT_agent = MOT_Sinkhorn_alt(params, X, MU)
+        MOT_agent = MOT_Sinkhorn(params, X, MU)
         MOT_agent.solve_sinkhorn()
 
     MOT_agent.save_results()

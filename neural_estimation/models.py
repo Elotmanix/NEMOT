@@ -1,61 +1,13 @@
 import numpy as np
 import torch.nn as nn
 import torch
-from torch.utils.data import Dataset, DataLoader
+import wandb
+from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from timeit import default_timer as timer
+from utils.data_fns import QuadCost
+import pickle
 import os
-from config import PreprocessMeta
-from data_fns import gen_data, QuadCost
-from models import Net_EOT, NE_mot_model
-from TaosBiEOT import dual_loss
-
-
-
-"""
-First test implementation of NMOT to check no problems with the idea itself
-Code flow:
-0. define simulation aprameters
-1. define data 
-2. define neural estimator nets (options - a)k different neural nets or b)weight sharing/one net with learned weigted output)
-3. run on example
-4. compare with Sinkhorn output (I need a Sinkhorn implementation anyways)
-"""
-def main():
-    # TD:
-    params = PreprocessMeta()
-
-    # params = gen_params()
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(params['cuda_visible'])
-    device = torch.device("cuda:0" if (torch.cuda.is_available() and params['device'] == 'gpu') else "cpu")
-    print(f"Using {device}")
-    print(params)
-
-    X = gen_data(params)
-    X = X.to(device)
-
-    # d = params['dims'][0]
-    # n = params['n']
-    #
-    # X = torch.from_numpy(
-    #     np.random.uniform(-1 / np.sqrt(d), 1 / np.sqrt(d), (n, d))).float().to(device)  # uniform [-1/sqrt(d),1/sqrt(d)]^d
-    # Y = torch.from_numpy(np.random.uniform(-1 / np.sqrt(d), 1 / np.sqrt(d), (n, d))).float().to(device)
-    # X = torch.stack([X,Y], dim=-1)
-
-    if params['alg'] == 'ne_mot':
-        MOT_agent = MOT_NE_alg(params, device)
-        MOT_agent.train_mot(X)
-
-
-
-
-
-########
-
-
-
-
 
 
 class MOT_NE_alg():
@@ -77,12 +29,14 @@ class MOT_NE_alg():
         self.opt = [torch.optim.Adam(list(self.models[i].parameters()), lr=params['lr']) for i in range(self.k)]
         self.device = device
         self.cost_graph = params['cost_graph']
+        self.using_wandb = params['using_wandb']
+        self.params = params
 
 
     def train_mot(self, X):
         x_b = DataLoader(X, batch_size=self.batch_size, shuffle=True)
-        tot_loss = []
-        times = []
+        self.tot_loss = []
+        self.times = []
         for epoch in range(self.num_epochs):
             l = []
             t0 = timer()
@@ -103,16 +57,36 @@ class MOT_NE_alg():
                     self.opt[k_ind].step()
                     l.append(loss.item())
             l = np.mean(l)
-            tot_loss.append(-l+ self.eps)
+            self.tot_loss.append(-l+ self.eps)
             epoch_time = timer()-t0
-            times.append(epoch_time)
-
+            self.times.append(epoch_time)
             print(f'finished epoch {epoch}, loss={-l+ self.eps:.5f}, took {epoch_time:.2f} seconds')
             # print(f'finished epoch {epoch}, loss={l / i}')
-        tot_loss = np.mean(tot_loss[-10:])
-        avg_time = np.mean(times)
-        print(f'Finished run, loss is {tot_loss:.5f}, average epoch time is {avg_time:.3f} seconds')
         self.models_to_eval
+
+    def save_results(self):
+        tot_loss = np.mean(self.tot_loss[-10:])
+        avg_time = np.mean(self.times)
+        data_to_save = {
+            'avg_loss': tot_loss,
+            'avg_time': avg_time,
+            'tot_loss': self.tot_loss,
+            'times': self.times,
+            'params': self.params
+            }
+        # Save path
+        path = os.path.join(self.params.figDir, 'results.pkl')
+
+        # Saving the data using pickle
+        with open(path, 'wb') as file:
+            pickle.dump(data_to_save, file)
+
+        if self.using_wandb:
+            wandb.log({'tot_loss': tot_loss, 'avg_time': avg_time})
+
+
+        print(f'Finished run, loss is {tot_loss:.5f}, average epoch time is {avg_time:.3f} seconds')
+
 
     def calc_exp_term(self, phi, x):
         # TD - IMPLEMENT MORE MEMORY EFFICIENT CALCULATION!!! DIVIDE LOSS!!
@@ -174,15 +148,39 @@ class MOT_NE_alg():
         for model in self.models:
             model.eval()
 
+class Net_EOT(nn.Module):
+    def __init__(self,dim,K,deeper=False):
+        super(Net_EOT, self).__init__()
+        self.deeper=deeper
+        if deeper:
+            self.fc1 = nn.Linear(dim, 10 * K)
+            self.fc2 = nn.Linear(10 * K, 10 * K)
+            self.fc3 = nn.Linear(10 * K, 1)
+        else:
+            self.fc1 = nn.Linear(dim, K)
+            self.fc2 = nn.Linear(K, 1)
+
+    def forward(self, x):
+        if self.deeper:
+            x1 = F.relu(self.fc1(x))
+            x11 = F.relu(self.fc2(x1))
+            x2 = self.fc3(x11)
+        else:
+            x1 = F.relu(self.fc1(x))
+            x2 = self.fc2(x1)
+        return x2
 
 
+class NE_mot_model(nn.Module):
+    def __init__(self, dim, hidden_dim=32):
+        super(NE_mot_model, self).__init__()
+        self.dim = dim
 
+        # Taos's N-GW model
+        self.fc1 = nn.Linear(dim, self.dim)
+        self.fc2 = nn.Linear(self.dim, 1)
 
-
-
-
-
-
-
-if __name__ == '__main__':
-    main()
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x

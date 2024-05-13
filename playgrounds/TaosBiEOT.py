@@ -1,13 +1,10 @@
 import torch
 import numpy as np
-import torch.nn as nn
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from ot.bregman import sinkhorn_knopp
 import os
-from models import Net_EOT
-from data_fns import gen_data
+from neural_estimation.models import Net_EOT
+from utils.data_fns import gen_data
 
 def main():
     # TD:

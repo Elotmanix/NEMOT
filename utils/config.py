@@ -15,6 +15,28 @@ def GetArgs():
     argparser = argparse.ArgumentParser(description=__doc__)
     argparser.add_argument('--config', default=None, type=str, help='configuration file')
     argparser.add_argument('--wandb_project_name', default=None, type=str, help='wandb project name')
+    argparser.add_argument('--run', default='debug', type=str, help='Run mode')
+    argparser.add_argument('--experiment', default='synthetic_mot', type=str, help='Experiment type')
+    argparser.add_argument('--batch_size', default=64, type=int, help='Batch size')
+    argparser.add_argument('--epochs', default=55, type=int, help='Number of epochs')
+    argparser.add_argument('--lr', default=5e-4, type=float, help='Learning rate')
+    argparser.add_argument('--n', default=5000, type=int, help='Sample size')
+    argparser.add_argument('--k', default=3, type=int, help='Number of iterations')
+    argparser.add_argument('--eps', default=0.5, type=float, help='Epsilon value for regularisation')
+    argparser.add_argument('--cost', default='quad', type=str, choices=['quad', 'quad_gw', 'ip_gw'], help='Cost function')
+    argparser.add_argument('--alg', default='ne_mot', type=str, choices=['ne_mot', 'sinkhorn_mot', 'ne_gw', 'sinkhorn_gw'],
+                        help='Algorithm')
+    argparser.add_argument('--hidden_dim', default=32, type=int, help='Dimension of hidden layers')
+    argparser.add_argument('--mod', default='mot', type=str, choices=['mot', 'mgw'], help='Model type')
+    argparser.add_argument('--seed', default=42, type=int, help='Random seed')
+    argparser.add_argument('--data_dist', default='uniform', type=str, help='Data distribution type')
+    argparser.add_argument('--dims', default=[13, 13, 13, 13, 13], nargs='+', type=int, help='Dimensions of the data')
+    argparser.add_argument('--dim', default=13, nargs='+', type=int, help='Dimensions of the data')
+    argparser.add_argument('--device', default='gpu', type=str, help='Device to use')
+    argparser.add_argument('--cuda_visible', default=3, type=int, help='CUDA visible device')
+    argparser.add_argument('--using_wandb', default=0, type=int, help='Use Weights & Biases logging')
+    argparser.add_argument('--cost_graph', default='full', type=str, choices=['full', 'circle', 'tree'],
+                        help='Graphical structure of the cost function')
 
 
     argparser.set_defaults(quiet=False)
@@ -50,7 +72,7 @@ def GetConfig(args):
         'epochs': 55,
         'lr': 5e-4,
         'n': 5000,
-        'k': 4,
+        'k': 3,
         'eps': 0.5,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
         'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
@@ -81,7 +103,7 @@ def GetConfig(args):
 
     now = datetime.datetime.now()
     now_str = now.strftime("%Y-%m-%d_%H-%M-%S")
-    config.figDir = f"results/{config.run}/{config.experiment}/k_{config.k}_stamp_{now_str}"
+    config.figDir = f"results/{config.run}/{config.alg}/k_{config.k}_stamp_{now_str}"
     os.makedirs(config.figDir, exist_ok=True)
 
     config.print()
