@@ -16,7 +16,8 @@ Code flow:
 def main():
     # TD:
     params = PreprocessMeta()
-
+    if params.alg in ['ne_mot', 'sinkhorn_mot']:
+        params.dims = [params.dim]*params.k
     # params = gen_params()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['cuda_visible'])

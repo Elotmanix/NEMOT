@@ -4,17 +4,26 @@ from neural_estimation.models import MOT_NE_alg
 from utils.config import PreprocessMeta
 from sinkhorn.sinkhorn_utils import MOT_Sinkhorn
 from utils.data_fns import gen_data
+import pprint
 
 def main():
     # TD:
     params = PreprocessMeta()
+    if params.alg in ['ne_mot', 'sinkhorn_mot']:
+        params.dims = [params.dim]*params.k
+    # print(params.dim)
 
     # params = gen_params()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['cuda_visible'])
     device = torch.device("cuda:0" if (torch.cuda.is_available() and params['device'] == 'gpu') else "cpu")
     print(f"Using {device}")
-    print(params)
+
+    print("Simultion Parameters:")
+    print("=" * 20)
+    for key, value in params.items():
+        print(f"{key: <15}: {value}")
+    print("=" * 20)
 
     X = gen_data(params)
 

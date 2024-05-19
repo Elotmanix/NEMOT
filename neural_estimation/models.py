@@ -27,6 +27,10 @@ class MOT_NE_alg():
             self.models.append(model)
         self.cost = params['cost']
         self.opt = [torch.optim.Adam(list(self.models[i].parameters()), lr=params['lr']) for i in range(self.k)]
+
+        if params.schedule:
+            self.scheduler = [torch.optim.lr_scheduler.StepLR(opt, step_size=params.schedule_step, gamma=params.schedule_gamma) for opt in self.opt]
+
         self.device = device
         self.cost_graph = params['cost_graph']
         self.using_wandb = params['using_wandb']
@@ -54,13 +58,25 @@ class MOT_NE_alg():
                     # loss = dual_loss(pred_x = phi[0], pred_y = phi[1], cost=cost, eps=self.eps)
                     ####
                     loss.backward()
+
+                    if self.params.clip_grads:
+                        torch.nn.utils.clip_grad_norm_(self.models[k_ind].parameters(), self.params.max_grad_norm)
+
                     self.opt[k_ind].step()
                     l.append(loss.item())
+
             l = np.mean(l)
             self.tot_loss.append(-l+ self.eps)
             epoch_time = timer()-t0
             self.times.append(epoch_time)
             print(f'finished epoch {epoch}, loss={-l+ self.eps:.5f}, took {epoch_time:.2f} seconds')
+
+            if self.params.schedule:
+                for sched in self.scheduler:
+                    sched.step()
+                    lr = sched.get_last_lr()[0]
+                    print(f'updated learning rate {lr}')
+
             # print(f'finished epoch {epoch}, loss={l / i}')
         self.models_to_eval
 

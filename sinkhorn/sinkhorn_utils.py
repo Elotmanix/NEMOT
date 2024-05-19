@@ -15,9 +15,11 @@ class MOT_Sinkhorn():
         self.k = params.k
         self.mus = MU
         self.n = params.n
-        self.tol = 1e-7
+        self.tol = 1e-10
         params['cost_graph'] = 'full'
         self.calc_kernel(params['cost_graph'], X)
+        self.using_wandb = params['using_wandb']
+        self.params=params
 
 
 
