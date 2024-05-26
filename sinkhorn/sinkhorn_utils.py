@@ -16,10 +16,11 @@ class MOT_Sinkhorn():
         self.mus = MU
         self.n = params.n
         self.tol = 1e-10
-        params['cost_graph'] = 'full'
+        self.params = params
+        # params['cost_graph'] = 'full'
         self.calc_kernel(params['cost_graph'], X)
         self.using_wandb = params['using_wandb']
-        self.params=params
+
 
 
 
@@ -29,23 +30,41 @@ class MOT_Sinkhorn():
         X has shape (n,d,k)
         Kernel shape depends on cost graphical structure
         """
-        if cost_graph == 'circle':
-            # calculate consecutive couples, Each Ki is a matrix Ki = exp(-Ci/eps)
-            # Ci = cost(x_i,x_{i+1}), therefore has a shape (n x n)
-            K = []
-            # for i in range(self.k):
-            C = QuadCost(data=X, mod='circle')
-            K = [np.exp(-c/self.eps) for c in C]
+        if self.params['alg'] == 'sinkhorn_mot':
+            if cost_graph == 'circle':
+                # calculate consecutive couples, Each Ki is a matrix Ki = exp(-Ci/eps)
+                # Ci = cost(x_i,x_{i+1}), therefore has a shape (n x n)
+                # for i in range(self.k):
+                C = QuadCost(data=X, mod='circle')
+                K = [np.exp(-c/self.eps) for c in C]
 
-        elif cost_graph == 'tree':
-            # TD
-            K=0
 
-        elif cost_graph == 'full':
-            # TD - figure out how to generate cost tensor in QuadCost
-            C = QuadCost(data=X, mod='full')
-            self.cost = C
-            K = np.exp(-C/self.eps)
+            elif cost_graph == 'full':
+                C = QuadCost(data=X, mod='full')
+                self.cost = C
+                K = np.exp(-C/self.eps)
+
+            elif cost_graph == 'tree':
+                # TD
+                K=0
+
+        elif self.params['alg'] == 'sinkhorn_gw':
+            if cost_graph == 'circle':
+                #TD!!!
+                # calculate consecutive couples, Each Ki is a matrix Ki = exp(-Ci/eps)
+                # Ci = cost(x_i,x_{i+1}), therefore has a shape (n x n)
+                C = QuadCost(data=X, mod='circle')
+                K = [np.exp(-c / self.eps) for c in C]
+
+            elif cost_graph == 'tree':
+                # TD
+                K = 0
+
+            elif cost_graph == 'full':
+                C = QuadCost(data=X, mod='full')
+                self.cost = C
+                K = np.exp(-C / self.eps)
+
 
         self.kernel = K
 
@@ -57,7 +76,7 @@ class MOT_Sinkhorn():
         """
         eta = self.eta
         tol = self.tol
-        naive = True
+        naive = self.params.cost_graph == 'full'
         self.tot_loss = []
         self.times = []
 
@@ -112,7 +131,8 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(scalei)
             else:
-                mi = self.marginalize(scalei)
+                mi = self.marginalize_circle(scalei)
+
             ratio = self.mus[scalei] / mi
             self.phi[scalei] = self.phi[scalei] + np.log(ratio) / eta
             # print(f'iteration: {curriter}, took {timer()-t0:.2f} seconds')
@@ -139,6 +159,118 @@ class MOT_Sinkhorn():
         result = scaled_K * scaled_alpha.T
         mi = result @ np.ones((result.shape[1],))
         return mi
+
+    def marginalize_circle_d(self, margidx):
+        """
+        Adaptation of the Euler flow implementation of marginalization under a circle cost
+        """
+
+        n = self.n
+        eta = self.eta
+        """ Compute transition matrices  margidx --> k ---> margidx"""
+        ############################################################
+        ############################################################
+        ############################################################
+        ############################################################
+        # trying cyclic index implementation
+
+        trans_m = np.eye(n)
+        for i in range(self.k-1):
+            """
+            starting from margidx+1, we calculate the transition
+            mdx+1->mdx+2->...k-1->k->0->mdx-1
+            """
+            # idx = (margidx+i+1)%self.k
+            idx = (margidx+i+1)%self.k
+            currcolscaling = np.diag(np.exp(eta * self.phi[idx]))
+            trans_m = trans_m @ currcolscaling
+            trans_m = trans_m @ self.kernel[idx]
+        # scaled = np.diag(trans_m)
+        scaled = np.diag(trans_m) * np.exp(eta * self.phi[margidx])
+
+        ############################################################
+        ############################################################
+        ############################################################
+        ############################################################
+        ############################################################
+        ############################################################
+        # ### adapt Altschuler's:
+        # trans1 = np.eye(n)
+        # transk = np.eye(n)
+        #
+        # for i in range(margidx):
+        #     currcolscaling = np.diag(np.exp(eta * self.phi[i]))
+        #     trans1 = trans1 @ currcolscaling
+        #     trans1 = trans1 @ self.kernel[i]
+        #
+        # for i in range(margidx+1, self.k):
+        #     transk = transk @ self.kernel[i]
+        #     currcolscaling = np.diag(np.exp(eta * self.phi[i]))
+        #     transk = transk @ currcolscaling
+        #
+        # # NOT SURE WE NEED THIS:
+        # # transk1 = transk @ self.kernel[self.k-1]
+        # transk1 = transk
+        # # MAYBE ADD MULT BY MARGIDX KERNEL?
+        # notscaled = np.diag(transk1 @ trans1)
+        #
+        # scaled = notscaled
+        # # scaled = notscaled * np.exp(eta * self.phi[margidx])
+        return scaled
+
+    def marginalize_circle(self, margidx):
+        """
+        Given weights p = [p_1,\ldots,p_k], and regularization eta > 0,
+        Let K = \exp[-C].
+        Let d_i = \exp[\eta p_i] for all i \in [k].
+        Let P = (d_1 \otimes \dots \otimes d_k) \odot K.
+        Return m_{margidx}(P).
+        """
+
+        n = self.n
+        reg_cost = self.kernel
+        # reg_cost = [self.kernel[0]]*self.k
+        reg_loop_cost = self.kernel[self.k-1]
+        eta = self.eta
+        p = self.phi
+
+        """ Compute transition matrices 1 --> margidx, margidx --> k """
+        trans1 = np.eye(n)
+        transk = np.eye(n)
+
+        # trans1[i,j] is the mass of cost of transitioning from i at time 1 to j at time margidx
+        # include the potentials in [1,margidx)
+        for i in range(margidx):
+            currcolscaling = np.diag(np.exp(eta * p[i]))
+            trans1 = trans1 @ currcolscaling
+            trans1 = trans1 @ reg_cost[i]
+
+        # transk[i,j] is the mass of the cost of transitioning from i at time margidx to j at time k
+        # include the potentials in (margidx,k]
+        for i in range(margidx + 1, self.k):
+            transk = transk @ reg_cost[i]
+            currcolscaling = np.diag(np.exp(eta * p[i]))
+            transk = transk @ currcolscaling
+
+        # print('trans1',trans1)
+        # print('transk',transk)
+
+        # transk1[i,j] is the mass of the cost of transitioning from i at time margidx to j at time 1 (going through time k and looping back to time 1)
+        # includes the potentials in (margidx,k]
+
+        # transk1 = transk @ reg_loop_cost
+        transk1 = self.kernel[margidx]@transk
+
+        # For each fixed l, compute trans1[:,l] \dot transk1[l,:].
+        # This marginalizes over time 1, but still does not compute the potentials at margidx.
+        notscaled = np.diag(transk1 @ trans1)
+
+        scaled = notscaled * np.exp(eta * p[margidx])
+        # comparison = self.marginalize_naive(eta, p, margidx)
+        # assert(np.all(np.isclose(scaled, comparison)))
+
+        return scaled
+
 
     def calc_alpha(self,i):
         """
@@ -193,7 +325,7 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(i)
             else:
-                mi = self.marginalize(i)
+                mi = self.marginalize_circle(i)
             badratio = self.mus[i] / mi
             minbadratio = np.minimum(1, badratio)
             p[i] = p[i] + np.log(minbadratio) / eta
@@ -203,7 +335,7 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(i)
             else:
-                mi = self.marginalize(i)
+                mi = self.marginalize_circle(i)
             erri = self.mus[i] - mi
             assert(np.all(erri >= -1e-10))
             erri = np.maximum(0,erri)
@@ -226,7 +358,7 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(i)
             else:
-                mi = self.marginalize(i)
+                mi = self.marginalize_circle(i)
             erri = np.sum(np.abs(mi - self.mus[i]))
             if erri > worsterr:
                 worsti = i
@@ -234,6 +366,13 @@ class MOT_Sinkhorn():
         return (worsti, worsterr)
 
     def calc_ot_cost(self, training=False):
+        """
+        currently implemeneted for full cost structures
+        :param training:
+        :return:
+        """
+        if self.params.cost_graph == 'circle':
+            return 0
         P = self.calc_plan(training)
         KL = sum([calc_ent(mu) for mu in self.mus]) - calc_ent(P)
         return np.sum(P*self.cost) + self.eps*KL

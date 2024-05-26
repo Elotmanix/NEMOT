@@ -1,21 +1,27 @@
 from utils.config import PreprocessMeta
 from sinkhorn.sinkhorn_utils import MOT_Sinkhorn
 from utils.data_fns import gen_data
+import numpy as np
 
 
 
 def main():
     # TD:
+    np.random.seed(42)
     params = PreprocessMeta()
     params['alg'] = 'sinkhorn_mot'
-    params.n = 500
+    params['cost_graph'] = 'circle'
+    params.n = 31
     params.k = 3
     params.eps = 0.5
-    params.dims = [1]*params.k
+    params.dims = [4]*params.k
 
     # params = gen_params()
 
     X, MU = gen_data(params)
+
+    # for i in range(1,params.k):
+    #     X[:,:,i] = X[:,:,0]
 
     MOT_agent = MOT_Sinkhorn(params, X, MU)
     MOT_agent.solve_sinkhorn()

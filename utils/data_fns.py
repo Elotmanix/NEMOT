@@ -27,9 +27,17 @@ def QuadCost(data, mod='circle'):
         differences = []
         if k>2:
             for i in range(k):
-                x = data[:,:,i]
-                y = data[:,:,(i + 1) % k]
-                differences.append(torch.norm(x[:,None] - y[None,:], dim=-1) ** 2)
+                # x = data[:,:,i]
+                # y = data[:,:,(i + 1) % k]
+                # differences.append(np.linalg.norm(x[:,None] - y[None,:], axis=-1) ** 2)
+                ####
+                # Extract vectors for variables i and j
+                vectors_i = data[:, :, i][:, np.newaxis, :]
+                vectors_j = data[:, :, (i+1) % k][np.newaxis, :, :]
+                # Compute the norm of the vector differences
+                vector_diffs = vectors_i - vectors_j
+                norms = np.linalg.norm(vector_diffs, axis=2) ** 2  # Compute norms along the vector dimension
+                differences.append(norms)
         else:
             x = data[:, :, 0]
             y = data[:, :, 1]

@@ -91,12 +91,11 @@ def GetConfig(args):
         'data_dist': 'uniform',
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dims': [13],
         'dim': 15,
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,
-        'cost_graph': 'full',  # The cost function graphical structure for decomposition. Options - full, circle, tree,
+        'cost_graph': 'full',  # The cost function graphical structure for decomposition. Options - full, circle(, tree),
 
 
         "wandb_entity": "dortsur",
@@ -107,6 +106,13 @@ def GetConfig(args):
 
         "clip_grads": 1,
         "max_grad_norm": 1.0,
+
+
+        # GW params:
+        'dims': [1,2,3],
+        'gw_ns': [5000,5000,5000],
+        'gw_same_n': 1,
+        'gw_use_convex_eps': 1
     }
     # TD: ADJUST DIMS TO K
     config['batch_size'] = min(config['batch_size'], config['n'])
