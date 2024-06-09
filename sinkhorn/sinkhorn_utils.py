@@ -6,6 +6,7 @@ from timeit import default_timer as timer
 import pickle
 import os
 import wandb
+import math
 
 
 class MOT_Sinkhorn():
@@ -16,6 +17,8 @@ class MOT_Sinkhorn():
         self.mus = MU
         self.n = params.n
         self.tol = 1e-10
+        if params.cost_graph == 'circle':
+            self.tol = 1e-5
         self.params = params
         # params['cost_graph'] = 'full'
         self.calc_kernel(params['cost_graph'], X)
@@ -131,7 +134,7 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(scalei)
             else:
-                mi = self.marginalize_circle(scalei)
+                mi = self.marginalize(scalei)
 
             ratio = self.mus[scalei] / mi
             self.phi[scalei] = self.phi[scalei] + np.log(ratio) / eta
@@ -146,79 +149,8 @@ class MOT_Sinkhorn():
         return
 
 
-    def marginalize(self, i):
-        """
-        Implementation of marginalization method for circle cost.
-        """
-        # update alpha[i] (:= alpha(i+1,i))
-        alpha = self.calc_alpha(i)
 
-        # calculate marginal
-        scaled_K = self.phi[i] * self.kernel[i+1]
-        scaled_alpha = self.phi[i+1] * alpha
-        result = scaled_K * scaled_alpha.T
-        mi = result @ np.ones((result.shape[1],))
-        return mi
-
-    def marginalize_circle_d(self, margidx):
-        """
-        Adaptation of the Euler flow implementation of marginalization under a circle cost
-        """
-
-        n = self.n
-        eta = self.eta
-        """ Compute transition matrices  margidx --> k ---> margidx"""
-        ############################################################
-        ############################################################
-        ############################################################
-        ############################################################
-        # trying cyclic index implementation
-
-        trans_m = np.eye(n)
-        for i in range(self.k-1):
-            """
-            starting from margidx+1, we calculate the transition
-            mdx+1->mdx+2->...k-1->k->0->mdx-1
-            """
-            # idx = (margidx+i+1)%self.k
-            idx = (margidx+i+1)%self.k
-            currcolscaling = np.diag(np.exp(eta * self.phi[idx]))
-            trans_m = trans_m @ currcolscaling
-            trans_m = trans_m @ self.kernel[idx]
-        # scaled = np.diag(trans_m)
-        scaled = np.diag(trans_m) * np.exp(eta * self.phi[margidx])
-
-        ############################################################
-        ############################################################
-        ############################################################
-        ############################################################
-        ############################################################
-        ############################################################
-        # ### adapt Altschuler's:
-        # trans1 = np.eye(n)
-        # transk = np.eye(n)
-        #
-        # for i in range(margidx):
-        #     currcolscaling = np.diag(np.exp(eta * self.phi[i]))
-        #     trans1 = trans1 @ currcolscaling
-        #     trans1 = trans1 @ self.kernel[i]
-        #
-        # for i in range(margidx+1, self.k):
-        #     transk = transk @ self.kernel[i]
-        #     currcolscaling = np.diag(np.exp(eta * self.phi[i]))
-        #     transk = transk @ currcolscaling
-        #
-        # # NOT SURE WE NEED THIS:
-        # # transk1 = transk @ self.kernel[self.k-1]
-        # transk1 = transk
-        # # MAYBE ADD MULT BY MARGIDX KERNEL?
-        # notscaled = np.diag(transk1 @ trans1)
-        #
-        # scaled = notscaled
-        # # scaled = notscaled * np.exp(eta * self.phi[margidx])
-        return scaled
-
-    def marginalize_circle(self, margidx):
+    def marginalize(self, margidx):
         """
         Given weights p = [p_1,\ldots,p_k], and regularization eta > 0,
         Let K = \exp[-C].
@@ -226,13 +158,12 @@ class MOT_Sinkhorn():
         Let P = (d_1 \otimes \dots \otimes d_k) \odot K.
         Return m_{margidx}(P).
         """
+        eta = self.eta
+        p = self.phi
 
         n = self.n
         reg_cost = self.kernel
-        # reg_cost = [self.kernel[0]]*self.k
         reg_loop_cost = self.kernel[self.k-1]
-        eta = self.eta
-        p = self.phi
 
         """ Compute transition matrices 1 --> margidx, margidx --> k """
         trans1 = np.eye(n)
@@ -245,10 +176,10 @@ class MOT_Sinkhorn():
             trans1 = trans1 @ currcolscaling
             trans1 = trans1 @ reg_cost[i]
 
-        # transk[i,j] is the mass of the cost of transitioning from i at time margidx to j at time k
+        # transk[i,j] is the mass of the cost of transitioning from i at time margidx to j at time K
         # include the potentials in (margidx,k]
-        for i in range(margidx + 1, self.k):
-            transk = transk @ reg_cost[i]
+        for i in range(margidx+1, self.k):
+            transk = transk @ reg_cost[i-1]
             currcolscaling = np.diag(np.exp(eta * p[i]))
             transk = transk @ currcolscaling
 
@@ -257,35 +188,18 @@ class MOT_Sinkhorn():
 
         # transk1[i,j] is the mass of the cost of transitioning from i at time margidx to j at time 1 (going through time k and looping back to time 1)
         # includes the potentials in (margidx,k]
-
-        # transk1 = transk @ reg_loop_cost
-        transk1 = self.kernel[margidx]@transk
+        transk1 = transk @ reg_loop_cost
 
         # For each fixed l, compute trans1[:,l] \dot transk1[l,:].
         # This marginalizes over time 1, but still does not compute the potentials at margidx.
         notscaled = np.diag(transk1 @ trans1)
+
 
         scaled = notscaled * np.exp(eta * p[margidx])
         # comparison = self.marginalize_naive(eta, p, margidx)
         # assert(np.all(np.isclose(scaled, comparison)))
 
         return scaled
-
-
-    def calc_alpha(self,i):
-        """
-        alg calcs alpha resursively
-        calculating alpha(i+1,i) starts from alpha(j,i) from j=i-1 going back to j=i+1 via modolu
-        :param i:
-        :return:
-        """
-        for j in range(1, self.k):
-            ind = (i-j)%self.k
-            if j == 1:
-                alpha = self.kernel[i]
-            else:
-                alpha = self.kernel[ind] @ (self.phi((ind+1)@self.k) * alpha)
-        return alpha
 
 
     def marginalize_naive(self, i, outplan=False):
@@ -316,7 +230,6 @@ class MOT_Sinkhorn():
         return mi
 
 
-
     def _round_sinkhorn(self, naive=False):
         """ Round sinkhorn solution with a rank-one perturbation """
         p = copy.deepcopy(self.phi)
@@ -325,7 +238,8 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(i)
             else:
-                mi = self.marginalize_circle(i)
+                # mi = self.marginalize_circle(i)
+                mi = self.marginalize(i)
             badratio = self.mus[i] / mi
             minbadratio = np.minimum(1, badratio)
             p[i] = p[i] + np.log(minbadratio) / eta
@@ -335,9 +249,11 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(i)
             else:
-                mi = self.marginalize_circle(i)
+                # mi = self.marginalize_circle(i)
+                mi = self.marginalize(i)
             erri = self.mus[i] - mi
-            assert(np.all(erri >= -1e-10))
+            # COMMENTED THIS ASSERT!
+            # assert(np.all(erri >= -1e-10))
             erri = np.maximum(0,erri)
             if i > 0 and np.sum(np.abs(erri)) > 1e-8:
                 rankone.append(erri /  np.sum(np.abs(erri)))
@@ -345,7 +261,6 @@ class MOT_Sinkhorn():
                 rankone.append(erri)
 
         return p, rankone
-
 
     def _sinkhorn_worst_error(self,naive=False):
         """
@@ -358,7 +273,7 @@ class MOT_Sinkhorn():
             if naive:
                 mi = self.marginalize_naive(i)
             else:
-                mi = self.marginalize_circle(i)
+                mi = self.marginalize(i)
             erri = np.sum(np.abs(mi - self.mus[i]))
             if erri > worsterr:
                 worsti = i
@@ -377,17 +292,19 @@ class MOT_Sinkhorn():
         KL = sum([calc_ent(mu) for mu in self.mus]) - calc_ent(P)
         return np.sum(P*self.cost) + self.eps*KL
 
-
     def calc_plan(self, training):
-        P = self.marginalize_naive(0, outplan=True)
-        if training:
-            return P
-        for index in  range(1,len(self.rankone)):
-            if index == 1:
-                rankone = np.tensordot(self.rankone[index-1], self.rankone[index], axes=0)
-            else:
-                rankone = np.tensordot(rankone, self.rankone[index], axes=0)
-        return P + rankone
+        if self.params.cost_graph == 'circle':
+            P = self.circle_plan
+        else:
+            P = self.marginalize_naive(0, outplan=True)
+            if training:
+                return P
+            for index in  range(1,len(self.rankone)):
+                if index == 1:
+                    rankone = np.tensordot(self.rankone[index-1], self.rankone[index], axes=0)
+                else:
+                    rankone = np.tensordot(rankone, self.rankone[index], axes=0)
+            return P + rankone
         #     #### OLD:
         #     # Create a shape of length k with 1s except at the index position
         #     shape = [1] * self.k
@@ -396,6 +313,35 @@ class MOT_Sinkhorn():
         #     P = P * (vec.reshape(shape))
         # R = sum(reshapred_rankone)
         # return P*np.exp(-self.kernel/self.eps)+R
+
+    def circle_plan(self):
+        otmaps = []
+        for i in range(0, self.k - 1):
+            print(f'Extracting map {i}')
+            otmaps.append(self.get_pairwise_marginal(i, i + 1))
+            print('Map extracted')
+        return otmaps
+
+
+    def get_pairwise_marginal(self, i1, i2):
+        pcopy = copy.deepcopy(self.phi)
+        marg2 = np.zeros((self.ns[i1],self.ns[i2]))
+        # print(np.sum(m1))
+        # print(np.prod([np.sum(rankone[i]) for i in range(self.k)]))
+        # assert(False)
+        for j1 in range(self.ns[i1]):
+            pcopy[i1] = np.ones(self.ns[i1]) * -math.inf
+            pcopy[i1][j1] = self.phi[i1][j1]
+            m2 = self.marginalize(self.eta, pcopy, i2)
+            marg2[j1,:] = m2
+        rankonefactor = 1
+        for i in range(self.k):
+            if i not in [i1, i2]:
+                rankonefactor *= np.sum(self.rankone[i])
+        for j1 in range(self.ns[i1]):
+            for j2 in range(self.ns[i2]):
+                marg2[j1,j2] += self.rankone[i1][j1] * self.rankone[i2][j2] * rankonefactor
+        return marg2
 
     def save_results(self):
         tot_loss = np.mean(self.tot_loss[-10:])

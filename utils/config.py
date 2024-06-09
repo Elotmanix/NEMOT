@@ -77,12 +77,12 @@ def GetConfig(args):
     config = {
         'run': 'debug',
         'experiment': 'synthetic_mot',
-        'batch_size': 64,
+        'batch_size': 128,
         'epochs': 150,
-        'lr': 5e-4,
+        'lr': 5e-5,
         'n': 5000,
-        'k': 3,
-        'eps': 0.05,
+        'k': 15,
+        'eps': 0.005,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
         'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
         'hidden_dim': 32,
@@ -91,28 +91,30 @@ def GetConfig(args):
         'data_dist': 'uniform',
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dim': 15,
+        'dim': 16,
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,
-        'cost_graph': 'full',  # The cost function graphical structure for decomposition. Options - full, circle(, tree),
+        'cost_graph': 'circle',  # The cost function graphical structure for decomposition. Options - full, circle(, tree),
 
 
         "wandb_entity": "dortsur",
 
-        "schedule": 0,
+        "schedule": 1,
         "schedule_step": 2,
         "schedule_gamma": 0.5,
 
         "clip_grads": 1,
-        "max_grad_norm": 1.0,
+        "max_grad_norm": 0.05,
 
 
         # GW params:
-        'dims': [1,2,3],
-        'gw_ns': [5000,5000,5000],
+        'dims': [1, 2, 3],
+        'gw_ns': [5000, 5000, 5000],
         'gw_same_n': 1,
-        'gw_use_convex_eps': 1
+        'gw_use_convex_eps': 1,
+
+        'save_results': True
     }
     # TD: ADJUST DIMS TO K
     config['batch_size'] = min(config['batch_size'], config['n'])

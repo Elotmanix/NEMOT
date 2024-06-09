@@ -111,17 +111,23 @@ class MOT_NE_alg():
         c = self.calc_cost(x)
 
         if self.cost_graph == 'circle':
-            # calc mapping:
-            reshaped_term = []
-            reshaped_c = []
-            for index, vec in enumerate(phi):
-                # Create a shape of length k with 1s except at the index position
-                shape = [1] * self.k
-                shape[index] = -1
-                reshaped_c.append(c[index].reshape(shape))
-                reshaped_term.append(vec.reshape(shape))
-            reshaped_term = sum(reshaped_term)
-            c = sum(reshaped_c)
+            n = phi[0].shape[0]
+            e_term = torch.eye(n).to(self.device)
+            for i in range(self.k):
+                L = torch.exp((0.5*(phi[i] + phi[ (i+1)%self.k ].T) - c[i])/self.eps)
+                e_term = (e_term @ L)*(1/self.batch_size)
+            return torch.trace(e_term)
+            # # calc mapping:
+            # reshaped_term = []
+            # reshaped_c = []
+            # for index, vec in enumerate(phi):
+            #     # Create a shape of length k with 1s except at the index position
+            #     shape = [1] * self.k
+            #     shape[index] = -1
+            #     reshaped_c.append(c[index].reshape(shape))
+            #     reshaped_term.append(vec.reshape(shape))
+            # reshaped_term = sum(reshaped_term)
+            # c = sum(reshaped_c)
         elif self.cost_graph == 'full':
             reshaped_term = []
             for index, vec in enumerate(phi):
@@ -132,10 +138,7 @@ class MOT_NE_alg():
                 reshaped_term.append(vec.reshape(shape))
             reshaped_term = sum(reshaped_term)
             # reshaped_term = phi[0][None, :] + phi[1][:, None]
-
-
-
-        return torch.mean(torch.exp((reshaped_term-c)/self.eps))
+            return torch.mean(torch.exp((reshaped_term-c)/self.eps))
 
 
     def calc_cost(self, data):

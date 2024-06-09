@@ -26,18 +26,31 @@ def QuadCost(data, mod='circle'):
     if mod == 'circle':
         differences = []
         if k>2:
-            for i in range(k):
-                # x = data[:,:,i]
-                # y = data[:,:,(i + 1) % k]
-                # differences.append(np.linalg.norm(x[:,None] - y[None,:], axis=-1) ** 2)
-                ####
-                # Extract vectors for variables i and j
-                vectors_i = data[:, :, i][:, np.newaxis, :]
-                vectors_j = data[:, :, (i+1) % k][np.newaxis, :, :]
-                # Compute the norm of the vector differences
-                vector_diffs = vectors_i - vectors_j
-                norms = np.linalg.norm(vector_diffs, axis=2) ** 2  # Compute norms along the vector dimension
-                differences.append(norms)
+            if isinstance(data, np.ndarray):
+                for i in range(k):
+                    # x = data[:,:,i]
+                    # y = data[:,:,(i + 1) % k]
+                    # differences.append(np.linalg.norm(x[:,None] - y[None,:], axis=-1) ** 2)
+                    ####
+                    # Extract vectors for variables i and j
+                    vectors_i = data[:, :, i][:, np.newaxis, :]
+                    vectors_j = data[:, :, (i+1) % k][np.newaxis, :, :]
+                    # Compute the norm of the vector differences
+                    vector_diffs = vectors_i - vectors_j
+                    norms = np.linalg.norm(vector_diffs, axis=2) ** 2  # Compute norms along the vector dimension
+                    differences.append(norms)
+            else:
+                for i in range(k):
+                    # Extract vectors for variables i and i+1
+                    vectors_i = data[:, :, i].unsqueeze(1)  # Adding dimension using unsqueeze
+                    vectors_j = data[:, :, (i+1)%k].unsqueeze(0)  # Adding dimension using unsqueeze
+
+                    # Compute the norm of the vector differences
+                    vector_diffs = vectors_i - vectors_j
+                    norms = torch.norm(vector_diffs, dim=2) ** 2  # Compute norms along the vector dimension
+                    differences.append(norms)
+
+
         else:
             x = data[:, :, 0]
             y = data[:, :, 1]
