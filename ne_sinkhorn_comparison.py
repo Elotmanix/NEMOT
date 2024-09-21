@@ -31,13 +31,17 @@ def main():
         X = X.to(device)
         MOT_agent = MOT_NE_alg(params, device)
         MOT_agent.train_mot(X)
+        # MOT_agent.calc_plan(X)
     elif params.alg == 'sinkhorn_mot':
-        assert params.n <= 750, "Error Message: n is too big for sinkhorn algorithm."
+        if params.cost_graph == 'full':
+            assert params.n <= 750, "Error Message: n is too big for sinkhorn algorithm."
         (X,MU) = X
         MOT_agent = MOT_Sinkhorn(params, X, MU)
         MOT_agent.solve_sinkhorn()
+        ## FOR DEBUG:
+        MOT_agent.calc_emot_from_phi()
 
-    MOT_agent.save_results()
+    MOT_agent.save_results(X)
 
 
 

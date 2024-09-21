@@ -43,6 +43,10 @@ def GetArgs():
     argparser.add_argument('--schedule_step',  type=int, help='number of epochs between each scheduler step')
     argparser.add_argument('--max_grad_norm',  type=float, help='gradient norm calipping value')
     argparser.add_argument('--clip_grads',  type=int, help='gradient clipping flag')
+    argparser.add_argument('--check_P_sum',  type=int, help='check P sum flag for debug purposes')
+    argparser.add_argument('--regularize_pariwise_coupling',  type=int, help='pairwise coupling regularization flag')
+    argparser.add_argument('--regularize_pariwise_coupling_reg',  type=float, help='pairwise coupling regularization coefficient')
+    argparser.add_argument('--euler',  type=int, help='euler flows case flag')
 
 
 
@@ -77,21 +81,21 @@ def GetConfig(args):
     config = {
         'run': 'debug',
         'experiment': 'synthetic_mot',
-        'batch_size': 128,
-        'epochs': 150,
+        'batch_size': 64,
+        'epochs': 50,
         'lr': 5e-5,
-        'n': 5000,
-        'k': 15,
-        'eps': 0.005,
+        'n': 2000,
+        'k': 3,
+        'eps': 0.5,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
         'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
         'hidden_dim': 32,
         'mod': 'mot',  # options - mot, mgw
-        'seed': 42,
+        'seed': 1,
         'data_dist': 'uniform',
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dim': 16,
+        'dim': 1,
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,
@@ -101,11 +105,20 @@ def GetConfig(args):
         "wandb_entity": "dortsur",
 
         "schedule": 1,
-        "schedule_step": 2,
+        "schedule_step": 5,
         "schedule_gamma": 0.5,
 
         "clip_grads": 1,
         "max_grad_norm": 0.05,
+
+        "check_P_sum": 1,
+
+        "euler": 0,
+
+        "regularize_pariwise_coupling": 0,
+        "regularize_pariwise_coupling_reg": 10.0,
+
+        "normalize_plan": 0,
 
 
         # GW params:

@@ -11,7 +11,7 @@ def main():
     params = PreprocessMeta()
     params['alg'] = 'sinkhorn_mot'
     params['cost_graph'] = 'circle'
-    params.n = 1001
+    params.n = 101
     params.k = 5
     params.eps = 0.5
     params.dims = [4]*params.k
@@ -30,6 +30,7 @@ def main():
     print('OT cost:', ot_cost)
     if params.save_results:
         MOT_agent.save_results()
+
 
 
 #OLD:

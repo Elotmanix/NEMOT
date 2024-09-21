@@ -3,10 +3,16 @@ import torch
 
 def gen_data(params):
     if params['data_dist'] == 'uniform':
-        # generate k samples which are d-dimensional with n samples (from Taos's notebook)
-        X = []
-        for i in range(params['k']):
-            X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
+        if params['euler'] == 1:
+            '''
+            generate euler flow samples - n evenly spaces samples along [0,1]
+            '''
+            X = [np.linspace(0, 1, params['n'], dtype=np.float32).reshape(params['n'], 1).astype(np.float32)]*params['k']
+        else:
+            # generate k samples which are d-dimensional with n samples (from Taos's notebook)
+            X = []
+            for i in range(params['k']):
+                X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
 
 
         if params['alg'] not in ('ne_gw','ne_mot'):
@@ -124,6 +130,32 @@ def QuadCost(data, mod='circle'):
 
                     # Sum the broadcasted norms into the tensor
                     differences += norms_reshaped
+    elif mod == 'euler':
+        '''
+        Calculate Euler Flows cost graph.
+        The Euler cost is defined as:
+        c(x_1...x_k) = \|\sigma(x_1) - x_k\|^2 + \sum_{i=1}^k\|x_{i+1}-x_i\|^2
+        '''
+        differences = []
+        if isinstance(data, np.ndarray):
+            pass
+        else:
+            for i in range(k-1):
+                vectors_i = data[:, :, i].unsqueeze(1)
+                vectors_j = data[:, :, (i + 1) % k].unsqueeze(0)
+
+                # Compute the norm of the vector differences
+                vector_diffs = vectors_i - vectors_j
+                norms = torch.norm(vector_diffs, dim=2) ** 2  # Compute norms along the vector dimension
+                differences.append(norms)
+
+            vectors_i = data[:, :, k-1].unsqueeze(1)
+            vectors_j = EulerSigma(data[:, :, 0].unsqueeze(0))
+            vector_diffs = vectors_i - vectors_j
+            norms = torch.norm(vector_diffs, dim=2) ** 2  # Compute norms along the vector dimension
+            differences.append(norms)
+
+
 
     return differences
 
@@ -138,3 +170,15 @@ def kronecker_product(vectors):
 
 def calc_ent(p):
     return -np.sum(p*np.log(p))
+
+
+def EulerSigma(data, case=0):
+    """
+    Applies the Euler Flow sigma displacement function.
+    :param data: assumed to be one-dimensional, so shape is (n,d,1)
+    :return:
+    """
+    if case == 0:
+        # in this case its x = (x + 0.5) mod 1
+        data = (data + 0.5)%1
+        return data

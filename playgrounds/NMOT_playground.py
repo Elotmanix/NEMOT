@@ -39,6 +39,7 @@ def main():
     if params['alg'] == 'ne_mot':
         MOT_agent = MOT_NE_alg(params, device)
         MOT_agent.train_mot(X)
+        MOT_agent.calc_plan(X)
         MOT_agent.save_results()
 
 
