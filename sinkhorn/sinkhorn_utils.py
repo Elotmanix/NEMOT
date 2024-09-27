@@ -445,7 +445,10 @@ class MOT_Sinkhorn():
             'times': self.times,
             'params': self.params
             }
-        ot_cost = self.calc_ot_cost()
+        if self.params.calc_ot_cost:
+            ot_cost = self.calc_ot_cost()
+        else:
+            ot_cost=0
         # Save path
         path = os.path.join(self.params.figDir, 'results.pkl')
 

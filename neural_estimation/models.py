@@ -83,7 +83,7 @@ class MOT_NE_alg():
             print(f'finished epoch {epoch}, loss={-l+ self.eps:.5f}, took {epoch_time:.2f} seconds')
 
             print_debug = True
-            if epoch%10==0 and print_debug and self.params.cost_graph != 'full':
+            if epoch%10==0 and print_debug and self.params.cost_graph != 'full' and self.params.calc_ot_cost:
                 P = self.calc_plan(X)
                 ot_cost = self.calc_ot_cost(P,X)
                 print(f'ot_cost {ot_cost}')
@@ -108,12 +108,14 @@ class MOT_NE_alg():
             'params': self.params,
             # 'plan': plan,
         }
-        if self.params.cost_graph != 'full':
+        if self.params.cost_graph != 'full' and self.params.calc_ot_cost:
             plan = self.calc_plan(X)
             ###
             ot_cost = self.calc_ot_cost(plan,X)
             ###
             data_to_save['ot_cost'] = ot_cost
+        else:
+            ot_cost = 0
         # Save path
         path = os.path.join(self.params.figDir, 'results.pkl')
 
