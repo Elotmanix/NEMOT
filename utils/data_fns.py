@@ -25,7 +25,7 @@ def gen_data(params):
         return X
 
 
-def QuadCost(data, mod='circle'):
+def QuadCost(data, mod='circle', root=None):
     k = data.shape[-1]
     n = data.shape[0]
     d = data.shape[1]
@@ -63,8 +63,7 @@ def QuadCost(data, mod='circle'):
             differences.append(torch.norm(x[:, None] - y[None, :], dim=-1) ** 2)
         # differences = [torch.norm(data[:, :, i] - data[:, :, (i + 1) % k], dim=1)**2 for i in range(k)]
     elif mod == 'tree':
-        # calculate loss according to tree structure
-        pass
+        differences = QuadCostTree(data, root)
     elif mod == 'full':
         # calculate all pairwise quadratic losses
         ###
@@ -155,10 +154,54 @@ def QuadCost(data, mod='circle'):
             norms = torch.norm(vector_diffs, dim=2) ** 2  # Compute norms along the vector dimension
             differences.append(norms)
 
-
-
     return differences
 
+
+def QuadCostTree(X, root):
+    """
+    Calculate the (k-1) squared L2 distance matrices for each non-root node in the tree.
+
+    Parameters:
+    - X: torch.Tensor of shape (n, d, k), where n is the number of samples, d is the dimension of each vector, and k is the number of nodes.
+    - root: The root of the tree, which is a Node object with children.
+
+    Returns:
+    - A list of torch.Tensor matrices, each of shape (n, n), representing the squared L2 distance for each non-root node.
+    """
+    n, d, k = X.shape
+    matrices = [0]*k
+
+    def traverse_and_calculate(node):
+        # If the node is not the root, calculate the squared L2 distance matrix
+        if not node.is_root_flag:
+            parent_index = node.parent_index   # Adjust for zero-indexing in Python
+            node_index = node.index   # Adjust for zero-indexing in Python
+
+            # Efficient broadcasting-based computation for squared L2 norms
+            # # Implementation where C[i,j]=x[i]-parent[j]
+            # vectors_i = X[:, :, node_index].unsqueeze(1)  # (n, 1, d)
+            # vectors_j = X[:, :, parent_index].unsqueeze(0)  # (1, n, d)
+
+            # Implementation where C[i,j]=parent[i]-x[j]
+            vectors_i = X[:, :, node_index].unsqueeze(0)  # (n, 1, d)
+            vectors_j = X[:, :, parent_index].unsqueeze(1)  # (1, n, d)
+
+            # Compute the squared L2 distance between all pairs using broadcasting
+            vector_diffs = vectors_i - vectors_j  # (n, n, d)
+            C_i = torch.norm(vector_diffs, dim=2) ** 2  # (n, n), squared L2 norms
+
+            # Store the matrix for this node
+            matrices[node_index] = C_i
+
+        # Traverse to the children recursively
+        for child in node.children:
+            traverse_and_calculate(child)
+
+    # Traverse the tree starting from the root and calculate the matrices
+    traverse_and_calculate(root)
+
+    # CURRENTLY FOR ROOT AT idx=0
+    return matrices
 
 def kronecker_product(vectors):
     for index in range(1, len(vectors)):

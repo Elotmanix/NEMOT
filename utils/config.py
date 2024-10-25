@@ -85,8 +85,8 @@ def GetConfig(args):
         'batch_size': 64,
         'epochs': 50,
         'lr': 5e-5,
-        'n': 100000,
-        'k': 10,
+        'n': 200,
+        'k': 4,
         'eps': 0.5,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
         'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
@@ -100,7 +100,7 @@ def GetConfig(args):
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,
-        'cost_graph': 'circle',  # The cost function graphical structure for decomposition. Options - full, circle(, tree),
+        'cost_graph': 'tree',  # The cost function graphical structure for decomposition. Options-full,circle,tree
 
 
         "wandb_entity": "dortsur",
@@ -122,6 +122,10 @@ def GetConfig(args):
         "normalize_plan": 0,
 
         "calc_ot_cost": 1,
+
+        # tree params:
+        "tree_ord": 'pre',      # traversal method for tree creation
+        "tree_type": 'bin',     # tree creation setting, either bin (binary), star or custom (from a given string)
 
 
         # GW params:

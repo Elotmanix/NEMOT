@@ -6,6 +6,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from timeit import default_timer as timer
 from utils.data_fns import QuadCost
+from utils.tree_fns import create_tree
 import pickle
 import os
 
@@ -13,6 +14,7 @@ import os
 class MOT_NE_alg():
     def __init__(self, params, device):
         self.models = []
+        self.params = params
         self.k = params['k']
         self.num_epochs = params['epochs']
         self.batch_size = params['batch_size']
@@ -30,6 +32,11 @@ class MOT_NE_alg():
 
         if params.schedule:
             self.scheduler = [torch.optim.lr_scheduler.StepLR(opt, step_size=params.schedule_step, gamma=params.schedule_gamma) for opt in self.opt]
+
+        if self.params.cost_graph == 'tree':
+            self.tree_root = create_tree(self.params)
+        else:
+            self.tree_root = None
 
         self.device = device
         self.cost_graph = params['cost_graph']
@@ -83,7 +90,7 @@ class MOT_NE_alg():
             print(f'finished epoch {epoch}, loss={-l+ self.eps:.5f}, took {epoch_time:.2f} seconds')
 
             print_debug = True
-            if epoch%10==0 and print_debug and self.params.cost_graph != 'full' and self.params.calc_ot_cost:
+            if epoch%10==0 and print_debug and self.params.cost_graph != 'full' and self.params.calc_ot_cost and self.params.cost_graph != 'tree':
                 P = self.calc_plan(X)
                 ot_cost = self.calc_ot_cost(P,X)
                 print(f'ot_cost {ot_cost}')
@@ -108,7 +115,7 @@ class MOT_NE_alg():
             'params': self.params,
             # 'plan': plan,
         }
-        if self.params.cost_graph != 'full' and self.params.calc_ot_cost:
+        if self.params.cost_graph != 'full' and self.params.calc_ot_cost and self.params.cost_graph != 'tree':
             plan = self.calc_plan(X)
             ###
             ot_cost = self.calc_ot_cost(plan,X)
@@ -184,6 +191,37 @@ class MOT_NE_alg():
             reshaped_term = sum(reshaped_term)
             # reshaped_term = phi[0][None, :] + phi[1][:, None]
             return torch.mean(torch.exp((reshaped_term-c)/self.eps))
+        elif self.cost_graph == 'tree':
+            n = phi[0].shape[0]
+            e_term = self.calc_exp_term_tree(n,phi,c)
+            return e_term
+
+
+
+    def calc_exp_term_tree(self, n, phi, c):
+        """
+        We traverse the tree and aggregate the multiplications.
+        """
+
+        def traverse_and_calculate(node):
+            # Aggregate children node calculation into V
+            V = torch.ones(size=(n,1)).cuda()
+            for child in node.children:
+                V = V*traverse_and_calculate(child)
+
+            # If we're at the root then we need to calculate
+            if node.is_root_flag:
+                # there is a vector and the beginning
+                L = 1 / n * torch.exp((phi[node.index] ) / self.eps).t()
+                return L @ V
+
+            ones = torch.ones(size=(n, 1)).cuda()
+            L = 1/n*torch.exp( ( ones@phi[node.index].t() - c[node.index] )/self.eps )
+
+            return L @ V
+
+        # Traverse the tree starting from the root and calculate the matrices
+        return traverse_and_calculate(self.tree_root).squeeze()
 
 
     def calc_cost(self, data):
@@ -196,7 +234,7 @@ class MOT_NE_alg():
             if self.cost_graph == 'circle' and self.params.euler == 1:
                 cost = QuadCost(data, mod='euler')
             else:
-                cost = QuadCost(data, mod=self.cost_graph)
+                cost = QuadCost(data, mod=self.cost_graph, root=self.tree_root)
         elif self.cost == 'quad_gw':
             # IMPLEMENT - cost = QuadCostGW(data, self.matrices)
             pass
@@ -400,7 +438,6 @@ class MOT_NE_alg():
             ot_plan = self.calc_pairwise_plan(exp_terms, i, (i + 1) % self.k, verbose=False)
             reg += (torch.sum(ot_plan)-1.0).abs()
         return reg
-
 
 
 
