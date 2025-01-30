@@ -5,7 +5,7 @@ import wandb
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from timeit import default_timer as timer
-from utils.data_fns import QuadCost
+from utils.data_fns import QuadCost, QuadCostGW, MultiTensorDataset
 from utils.tree_fns import create_tree
 import pickle
 import os
@@ -160,8 +160,27 @@ class MOT_NE_alg():
         # TD - IMPLEMENT MORE MEMORY EFFICIENT CALCULATION!!! DIVIDE LOSS!!
 
         # calc loss tensor
-        c = self.calc_cost(x)
 
+        if self.params.cost_implement == 'simplified':
+            reduced_phi = torch.sum(torch.concatenate(phi, axis=1), axis=1)
+            if self.cost_graph == 'full':
+                # calculate the simplified loss
+                # calc reduced phi term:
+
+                # cal reduced cost term:
+                diffs = x.unsqueeze(-1) - x.unsqueeze(-2)
+                # calc cost. this method counts all cost terms twice, se we divide the cost by 2.
+                cost = 0.5*torch.norm(diffs, dim=1) ** 2
+                e_term = torch.exp((reduced_phi - cost.sum(axis=(1,2)))/self.eps)
+            elif self.cost_graph == 'circle':
+                shifted_x = torch.roll(x, shifts=1, dims=-1)
+                diffs = x - shifted_x
+                cost = torch.norm(diffs, dim=1) ** 2
+                e_term = torch.exp((reduced_phi - cost.sum(axis=(-1))) / self.eps)
+            return e_term.mean()
+
+        # COMBINATORIAL IMPLEMENTATION
+        c = self.calc_cost(x)
         if self.cost_graph == 'circle':
             n = phi[0].shape[0]
             e_term = torch.eye(n).to(self.device)
@@ -440,6 +459,353 @@ class MOT_NE_alg():
         return reg
 
 
+class MGW_NE_alg(MOT_NE_alg):
+    def __init__(self, params, device, X):
+        """
+        EMGW agent
+        built upon the MOT_NE_alg.
+
+        """
+        super().__init__(params, device)
+        self.initialize_alg(X)
+        # same optimizer for all matrices:
+
+    def initialize_alg(self,X):
+        """
+        Initialize the A matrices of the MGW problem
+        """
+        if self.params.A_mgw_opt == 'autograd':
+            # INIT As at models
+            if self.cost_graph == 'full':
+                # all (i,j) options
+                pass
+            elif self.cost_graph == 'circle':
+                # k  matrices
+                As = []
+                self.opt_A = []
+                for i in range(self.k):
+                    A = A_model(self.params.dims[i],self.params.dims[(i+1)%self.k])
+                    self.opt_A.append(torch.optim.Adam(A.parameters(), lr=self.params['lr']))
+                    As.append(A.cuda())
+            elif self.cost_graph == 'tree':
+                # k-1 matrices
+                pass
+            self.A_matrices = As
+        else:
+            # Doing first order optimization:
+            self.tolerance = 1e-4
+            self.max_iter = 100
+            self.K_const = 32
+            self.M = 1
+            self.L = max(64,32*32*(1/9+4/(45*self.params.dims[0]))/self.eps-64)
+            norms = [torch.norm(x, dim=1) for x in X]
+            self.C_1 = [-4*norms[i][:,None]*norms[(i+1)%self.k][None,:] for i in range(self.k)]
+            self.S1 = 0 # TD
+            self.A_matrices = [torch.ones(self.params.dims[i],self.params.dims[(i+1)%self.k]) * 1e-5 for i in range(self.k)]
+            self.C_matrices = [torch.ones(self.params.dims[i], self.params.dims[(i + 1) % self.k]) * 1e-5 for i in range(self.k)]
+
+    def train_with_oracle(self, X):
+        nemot_n_epochs = 5
+        x_b = MultiTensorDataset(X)
+        x_b = DataLoader(x_b, batch_size=self.batch_size, shuffle=True)
+
+        self.tot_loss = []
+        self.times = []
+
+        for iter in range(self.max_iter):
+
+            for epoch in range(nemot_n_epochs):
+                l = []
+                # perform an epoch
+                for i, data in enumerate(x_b):
+                    self.zero_grad_models()
+                    for k_ind in range(self.k):
+                        # k-margin loss
+                        phi = [self.models[i](data[i]) for i in
+                               range(self.k)]  # each phi[i] should have shape (b,1)
+                        e_term = self.calc_exp_term_mgw(phi, data)
+                        loss = -(sum(phi).mean() - self.eps * e_term)
+                        loss.backward()
+
+                        if self.params.clip_grads:
+                            torch.nn.utils.clip_grad_norm_(self.models[k_ind].parameters(),
+                                                           self.params.max_grad_norm)
+                        self.opt[k_ind].step()
+                        l.append(loss.item())
+                l = np.mean(l)
+                self.tot_loss.append(-l + self.eps)
+                print(f'iter: {iter}, finished NEMOT epoch {epoch}, loss: {-l + self.eps:.5f}')
+
+            # PERFORM A SINGLE A UPDATE:
+            # THIS IS LIMITED TO SIMPLIFIED PLANS!
+            gamma = iter / (4 * self.L)
+            tau = 2 / (iter + 2)
+            P = self.calc_plan(X)
+            print(f'iteration {iter}')
+            for i in range(len(self.A_matrices)):
+                A = self.A_matrices[i]
+                C = self.C_matrices[i]
+                grad = 64 * A - 32 * X[i].T @ P[i] @ X[i + 1]
+                print(f'grad_i norm is {torch.linalg.norm(grad)}')
+                B = torch.where(torch.abs(A - grad / (2 * self.L)) <= self.M / 2, A - grad / (2 * self.L),
+                                self.M / 2)
+                C = torch.where(torch.abs(C - grad * gamma) <= self.M / 2, A - grad * gamma, self.M / 2)
+                A = tau * C + (1 - tau) * B
+                self.A_matrices[i] = A
+                self.C_matrices[i] = C
+
+                    # if self.params.schedule:
+                    #     for sched in self.scheduler:
+                    #         sched.step()
+
+    def calc_exp_term_mgw(self,phi,x):
+        norms = [torch.norm(x_, dim=1) ** 2 for x_ in x]
+
+        if self.params.A_mgw_opt == 'autograd':
+            cost_list = [torch.diagonal(-4* norms[i][:,None]* norms[(i+1)%self.k][None,:] -32 * self.A_matrices[i]( (x[i], x[(i+1)%self.k])) ) for i in range(self.k)]
+        else:
+            cost_list = [torch.diagonal(
+                -4 * norms[i][:, None] * norms[(i + 1) % self.k][None, :] - 32 * x[i] @ self.A_matrices[i].cuda() @ x[
+                    (i + 1) % self.k].T) for i in range(self.k)]
+
+        reduced_phi = torch.sum(torch.concatenate(phi, axis=1), axis=1)
+        cost = sum(cost_list)
+        e_term = torch.exp((reduced_phi - cost) / self.eps)
+        return torch.mean(e_term)
+
+    def calc_plan_mgw(self, X):
+        # TD!!! plan calculation!!!
+        if self.cost_graph == 'circle':
+            phi = [self.models[i](X[i]) for i in range(self.k)]
+            c = self.calc_cost_mgw(X)
+            exp_terms = [torch.exp((0.5*(phi[i] + phi[ (i+1)%self.k ].T) - c[i])/self.eps) for i in range(self.k)]
+            ot_plan = []
+            for i in range(self.k):
+                P = self.calc_pairwise_plan(exp_terms,i, (i+1)%self.k )
+                if self.params.normalize_plan:
+                    P = P/torch.sum(P)
+                ot_plan.append(P)
+                if self.params.check_P_sum and self.params.using_wandb:
+                    print('h')
+                    wandb.log({f'ot_plan_{i}_sum': torch.sum(ot_plan[i]).item()})
+        else:
+            phi = [self.models[i](X[:, :, i]) for i in range(self.k)]
+            reshaped_term = []
+            for index, vec in enumerate(phi):
+                # Create a shape of length k with 1s except at the index position
+                shape = [1] * self.k
+                shape[index] = -1
+                # shape[-index] = -1
+                reshaped_term.append(vec.reshape(shape))
+            reshaped_term = sum(reshaped_term)
+            # reshaped_term = phi[0][None, :] + phi[1][:, None]
+            c = self.calc_exp_term(phi, X)
+            ot_plan = torch.exp((reshaped_term - c) / self.eps)
+        return ot_plan
+
+
+    def train_mgw_combined(self, X):
+        """
+        Training both A matrices and MGW via automatic differentiation
+        :param X:
+        :return:
+        """
+        x_b = MultiTensorDataset(X)
+        x_b = DataLoader(x_b, batch_size=self.batch_size, shuffle=True)
+        self.tot_loss = []
+        self.times = []
+        nemot_epochs = 4
+        for epoch in range(self.num_epochs):
+            A_opt_flag = epoch > 0 and epoch%nemot_epochs==0
+            t0 = timer()
+            l = []
+            if A_opt_flag:
+                # train A
+                l = []
+                for i, data in enumerate(x_b):
+                    self.zero_grad_models()
+                    for k_ind in range(self.k):
+                        phi = [self.models[i](data[i]) for i in
+                               range(self.k)]  # each phi[i] should have shape (b,1)
+                        e_term = self.calc_exp_term_mgw(phi, data)
+                        loss = -(sum(phi).mean() - self.eps * e_term)
+                        frob_norms = 32*sum([model.A.norm(p='fro')**2 for model in self.A_matrices])
+                        loss = -loss + frob_norms
+                        loss.backward()
+
+                        if self.params.clip_grads:
+                            torch.nn.utils.clip_grad_norm_(self.A_matrices[k_ind].parameters(),
+                                                           self.params.max_grad_norm)
+                    self.opt_A[k_ind].step()
+                    l.append(loss.item())
+                self.tot_loss.append(np.mean(l) + self.eps)
+            else:
+                # train NEMOT
+                for i, data in enumerate(x_b):
+                    self.zero_grad_models()
+                    for k_ind in range(self.k):
+                        # k-margin loss
+                        phi = [self.models[i](data[i]) for i in
+                               range(self.k)]  # each phi[i] should have shape (b,1)
+                        e_term = self.calc_exp_term_mgw(phi, data)
+                        loss = -(sum(phi).mean() - self.eps * e_term)
+                        loss.backward()
+
+                        if self.params.clip_grads:
+                            torch.nn.utils.clip_grad_norm_(self.models[k_ind].parameters(),
+                                                           self.params.max_grad_norm)
+                        self.opt[k_ind].step()
+                        l.append(loss.item())
+            epoch_time = timer() - t0
+            l = np.mean(l)
+            self.times.append(epoch_time)
+            print(f'finished epoch {epoch}, loss: {-l + self.eps:.5f}')
+
+        #
+
+
+
+
+        #
+        # X_b = [DataLoader(x, batch_size=self.batch_size, shuffle=True) for x in X]
+        # self.tot_loss = []
+        # self.times = []
+        # self.nemot_n_epochs = 5
+        # for epoch in range(self.num_epochs):
+        #     l = []
+        #     t0 = timer()
+        #     if epoch%self.nemot_n_epochs == 0 and epoch>0:  # M MATRICES EPOCH
+        #         # train A matrices this epoch:
+        #         # for i, data in enumerate(zip(X_b)):
+        #         for data in zip(X_b):
+        #             self.opt_A.zero_grad()
+        #             # k-margin loss
+        #             phi = [self.models[i](data[i]) for i in
+        #                    range(self.k)]  # each phi[i] should have shape (b,1)
+        #             e_term = self.calc_exp_term(phi, data)
+        #             loss = -(sum(phi).mean() - self.eps * e_term)+32*sum([torch.norm(A, p='fro') for A in self.A_matrices])
+        #             loss.backward()
+        #
+        #             if self.params.clip_grads:
+        #                 torch.nn.utils.clip_grad_norm_(self.A_matrices, self.params.max_grad_norm)
+        #
+        #             self.opt_A.step()
+        #             l.append(loss.item())
+        #
+        #         print_plan_overall = False
+        #         if print_plan_overall:
+        #             phi_all = [self.models[i](X[:, :, i]) for i in range(self.k)]
+        #             print(self.calc_exp_term(phi_all, X))
+        #
+        #         l = np.mean(l)
+        #         self.tot_loss.append(-l + self.eps)
+        #         epoch_time = timer() - t0
+        #         self.times.append(epoch_time)
+        #         print(f'finished A_matrices epoch {epoch}, loss={-l + self.eps:.5f}, took {epoch_time:.2f} seconds')
+        #
+        #     else:
+        #         # train NEMOT this epoch:
+        #         for data in zip(*X_b):
+        #             self.zero_grad_models()
+        #             # data.to(self.device)
+        #             for k_ind in range(self.k):
+        #                 # k-margin loss
+        #                 phi = [self.models[i](data[:, :, i]) for i in range(self.k)]  # each phi[i] should have shape (b,1)
+        #                 e_term = self.calc_exp_term(phi, data)
+        #                 loss = -(sum(phi).mean() - self.eps * e_term)
+        #                 if self.params.regularize_pariwise_coupling and self.params.cost_graph != 'full':
+        #                     # print('regularize_pariwise_coupling')
+        #                     pairwise_reg = self.calc_pairwise_coupling_regularizer(phi, data)
+        #                     reg_loss = loss + self.params.regularize_pariwise_coupling_reg * pairwise_reg
+        #                     reg_loss.backward()
+        #                 else:
+        #                     loss.backward()
+        #
+        #                 if self.params.clip_grads:
+        #                     torch.nn.utils.clip_grad_norm_(self.models[k_ind].parameters(), self.params.max_grad_norm)
+        #
+        #                 self.opt[k_ind].step()
+        #                 l.append(loss.item())
+        #
+        #         print_plan_overall = False
+        #         if print_plan_overall:
+        #             phi_all = [self.models[i](X[:, :, i]) for i in range(self.k)]
+        #             print(self.calc_exp_term(phi_all, X))
+        #
+        #         l = np.mean(l)
+        #         self.tot_loss.append(-l + self.eps)
+        #         epoch_time = timer() - t0
+        #         self.times.append(epoch_time)
+        #         print(f'finished NEMOT epoch {epoch}, loss={-l + self.eps:.5f}, took {epoch_time:.2f} seconds')
+        #
+        #     print_debug = True
+        #     if epoch % 10 == 0 and print_debug and self.params.cost_graph != 'full' and self.params.calc_ot_cost and self.params.cost_graph != 'tree':
+        #         P = self.calc_plan(X)
+        #         ot_cost = self.calc_ot_cost(P, X)
+        #         print(f'ot_cost {ot_cost}')
+        #
+        #     if self.params.schedule:
+        #         for sched in self.scheduler:
+        #             sched.step()
+        #             lr = sched.get_last_lr()[0]
+        #             # print(f'updated learning rate {lr}')
+        #
+        #     # print(f'finished epoch {epoch}, loss={l / i}')
+        # self.models_to_eval
+
+    def save_results(self,X=None):
+        tot_loss = np.mean(self.tot_loss[-10:])
+        avg_time = np.mean(self.times)
+        data_to_save = {
+            'avg_loss': tot_loss,
+            'avg_time': avg_time,
+            'tot_loss': self.tot_loss,
+            'times': self.times,
+            'params': self.params,
+            # 'plan': plan,
+        }
+        # if self.params.cost_graph != 'full' and self.params.calc_ot_cost and self.params.cost_graph != 'tree':
+        #     plan = self.calc_plan(X)
+        #     ###
+        #     ot_cost = self.calc_ot_cost(plan,X)
+        #     ###
+        #     data_to_save['ot_cost'] = ot_cost
+        # else:
+        #     ot_cost = 0
+        # Save path
+        path = os.path.join(self.params.figDir, 'results.pkl')
+
+        # Saving the data using pickle
+        with open(path, 'wb') as file:
+            pickle.dump(data_to_save, file)
+
+        if self.using_wandb:
+            wandb.log({'tot_loss': tot_loss+self.eps,
+                       'avg_time': avg_time
+                       })
+            # if self.params.cost_graph != 'full':
+            #     wandb.log(({
+            #            'ot_cost': ot_cost
+            #            }))
+
+        # if self.params.cost_graph != 'full':
+        #     print(f'Finished run, loss is {tot_loss:.5f}, average epoch time is {avg_time:.3f} seconds, ot_cost {ot_cost:.5f}')
+        # else:
+        #     print(f'Finished run, loss is {tot_loss:.5f}, average epoch time is {avg_time:.3f} seconds')
+
+    def calc_cost(self, data):
+        """
+        calculates the cost over bacthed data
+        :param data:
+        :return:
+        """
+        if self.cost == 'quad':
+            cost = QuadCostGW(data, self.A_matrices)
+
+
+        # NOW - BROADCAST!!
+        return cost
+
 
 class Net_EOT(nn.Module):
     def __init__(self,dim,K,deeper=False):
@@ -477,3 +843,13 @@ class NE_mot_model(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+
+
+class A_model(nn.Module):
+    def __init__(self, d_in, d_out):
+        super(A_model, self).__init__()
+        self.A = nn.Parameter(torch.full((d_in, d_out), 1e-4))
+
+    def forward(self, x):
+        x1, x2 = x
+        return x1 @ self.A @ x2.T

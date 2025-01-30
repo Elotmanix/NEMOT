@@ -5,29 +5,29 @@ metric:
   name: tot_loss
 parameters:
   experiment:
-    values: ['synthetic_mot_circle']
+    values: ['synthetic_mot_full_gauss']
   lr:
-    values: [0.00005]
+    values: [5e-5]
   alg:
-    values: ['ne_mot']
+    values: ['ne_mot','sinkhorn_mot']
   data_dist:
-    values: ['uniform']
+    values: ['gauss']
   cost_graph:
-    values: ['circle']
+    values: ['full']
   batch_size:
-    values: [128]
+    values: [64]
   epochs:
-    values: [50]
+    values: [35]
   k:
-    values: [3,5,7,9,15,25]
+    values: [3]
   n:
     values: [5000]
   eps:
-    values: [0.5, 0.1, 0.05]
+    values: [1]
   dim:
-    values: [16,19,22,25]
+    values: [1,3,5,8,10,15,20,25,30,40,50]
   seed:
-    values: [1,2,3]
+    values: [1,2,3,4,5]
   clip_grads:
     values: [1]
   max_grad_norm:
@@ -39,11 +39,15 @@ parameters:
   schedule_gamma:
     values: [0.5]
   schedule_step:
-    values: [4]
+    values: [5]
   using_wandb:
     values: [1]
+  cost_implement:
+    values: ['simplified']
+  calc_ot_cost:
+    values: [ 0 ]
   wandb_project_name:
-    values: ["check_stability"]
+    values: ["testing_simplified"]
   run:
     values: ["sweeps"]
 

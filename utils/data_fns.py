@@ -1,8 +1,11 @@
 import numpy as np
 import torch
+from torch.utils.data import Dataset, DataLoader
+
 
 def gen_data(params):
     if params['data_dist'] == 'uniform':
+
         if params['euler'] == 1:
             '''
             generate euler flow samples - n evenly spaces samples along [0,1]
@@ -14,15 +17,32 @@ def gen_data(params):
             for i in range(params['k']):
                 X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
 
+    elif params['data_dist'] == 'gauss':
+        X = []
+        for i in range(params['k']):
+            std = params.gauss_std/np.sqrt(params['dims'][i])
+            X.append(
+                std*np.random.normal(size=(params['n'], params['dims'][i])).astype(np.float32)
+                # np.random.uniform(-1 / np.sqrt(params['dims'][i]), 1 / np.sqrt(params['dims'][i]),
+                #                        (params['n'], params['dims'][i])).astype(np.float32)
+            )
 
-        if params['alg'] not in ('ne_gw','ne_mot'):
-            X = np.stack(X, axis=-1)
-            MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
-            return X, MU
-
+    if params['alg'] not in ('ne_mgw','ne_mot'):
+        X = np.stack(X, axis=-1)
+        MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
+        return X, MU
+    elif params['alg'] == 'ne_mot':
         X = torch.from_numpy(np.stack(X, axis=-1))
+    elif params['alg'] == 'ne_mgw':
+        X = [torch.from_numpy(x) for x in X]
 
-        return X
+
+
+
+
+
+
+    return X
 
 
 def QuadCost(data, mod='circle', root=None):
@@ -156,6 +176,16 @@ def QuadCost(data, mod='circle', root=None):
 
     return differences
 
+def QuadCostGW(data, matrices, mod='circle'):
+    k = data.shape[-1]
+    c = []
+    if mod == 'circle':
+        for i in range(k):
+            # c_i = x_i A_i y_{i+1}^T
+            c.append(data[:, :, i]@matrices[i]@data[:,:,(i+1)%k].T)
+    else:
+        pass
+    return c
 
 def QuadCostTree(X, root):
     """
@@ -225,3 +255,35 @@ def EulerSigma(data, case=0):
         # in this case its x = (x + 0.5) mod 1
         data = (data + 0.5)%1
         return data
+
+
+def style_transfer_data(params):
+    """
+    Creating the data for style transfer experiment.
+    1. Loading images
+    2. Loading vgg
+    3. mapping images into data
+    4. returning encoded images and decoder models
+    """
+
+
+class MultiTensorDataset(Dataset):
+    def __init__(self, tensor_list):
+        """
+        Initialize the dataset with a list of tensors.
+        :param tensor_list: List of tensors with the same number of samples (first dimension).
+        """
+        self.tensors = tensor_list
+        self.n_samples = tensor_list[0].shape[0]  # Number of samples
+        # Ensure all tensors have the same number of samples
+        assert all(tensor.shape[0] == self.n_samples for tensor in tensor_list), \
+            "All tensors must have the same number of samples (first dimension)."
+
+    def __len__(self):
+        return self.n_samples
+
+    def __getitem__(self, index):
+        """
+        Return the sample at the given index as a tuple of tensors.
+        """
+        return tuple(tensor[index] for tensor in self.tensors)

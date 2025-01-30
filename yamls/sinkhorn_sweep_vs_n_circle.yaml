@@ -1,4 +1,4 @@
-program: ne_sinkhorn_comparison.py
+program: main.py
 method: grid
 metric:
   goal: maximize

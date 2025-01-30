@@ -1,6 +1,6 @@
 import torch
 import os
-from neural_estimation.models import MOT_NE_alg
+from neural_estimation.models import MOT_NE_alg, MGW_NE_alg
 from utils.config import PreprocessMeta
 from sinkhorn.sinkhorn_utils import MOT_Sinkhorn
 from utils.data_fns import gen_data
@@ -9,11 +9,8 @@ import pprint
 def main():
     # TD:
     params = PreprocessMeta()
-    if params.alg in ['ne_mot', 'sinkhorn_mot']:
+    if params.alg in ['ne_mot', 'sinkhorn_mot'] or params.data_dist == 'uniform':
         params.dims = [params.dim]*params.k
-    # print(params.dim)
-
-    # params = gen_params()
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['cuda_visible'])
     device = torch.device("cuda:0" if (torch.cuda.is_available() and params['device'] == 'gpu') else "cpu")
@@ -25,6 +22,9 @@ def main():
         print(f"{key: <15}: {value}")
     print("=" * 20)
 
+    if params.alg == 'sinkhorn_mot' and params.cost_graph == 'full' and params.n >= 750:
+        params.n = 500
+        print(f'n is too big for sinkhorn algorithm. Setting n to {params.n}')
     X = gen_data(params)
 
     if params.alg == 'ne_mot':
@@ -33,13 +33,16 @@ def main():
         MOT_agent.train_mot(X)
         # MOT_agent.calc_plan(X)
     elif params.alg == 'sinkhorn_mot':
-        if params.cost_graph == 'full':
-            assert params.n <= 750, "Error Message: n is too big for sinkhorn algorithm."
         (X,MU) = X
         MOT_agent = MOT_Sinkhorn(params, X, MU)
         MOT_agent.solve_sinkhorn()
         ## FOR DEBUG:
-        MOT_agent.calc_emot_from_phi()
+        # MOT_agent.calc_emot_from_phi()
+    elif params.alg == 'ne_mgw':
+        X = [x.to(device) for x in X]
+        MOT_agent = MGW_NE_alg(params, device, X)
+        MOT_agent.train_mgw_combined(X)
+        # MOT_agent.train_with_oracle(X)
 
     MOT_agent.save_results(X)
 

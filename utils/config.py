@@ -25,7 +25,7 @@ def GetArgs():
     argparser.add_argument('--k',  type=int, help='Number of iterations')
     argparser.add_argument('--eps',  type=float, help='Epsilon value for regularisation')
     argparser.add_argument('--cost',  type=str, choices=['quad', 'quad_gw', 'ip_gw'], help='Cost function')
-    argparser.add_argument('--alg',  type=str, choices=['ne_mot', 'sinkhorn_mot', 'ne_gw', 'sinkhorn_gw'],
+    argparser.add_argument('--alg',  type=str, choices=['ne_mot', 'sinkhorn_mot', 'ne_mgw', 'sinkhorn_gw'],
                         help='Algorithm')
     argparser.add_argument('--hidden_dim',  type=int, help='Dimension of hidden layers')
     argparser.add_argument('--mod',  type=str, choices=['mot', 'mgw'], help='Model type')
@@ -48,6 +48,8 @@ def GetArgs():
     argparser.add_argument('--regularize_pariwise_coupling_reg',  type=float, help='pairwise coupling regularization coefficient')
     argparser.add_argument('--euler',  type=int, help='euler flows case flag')
     argparser.add_argument('--calc_ot_cost',  type=int, help='a flag to skip the ot cost claculation')
+    argparser.add_argument('--cost_implement',  type=str, help='a flag to skip the ot cost claculation')
+    argparser.add_argument('--gauss_std',  type=float, help='a flag to skip the ot cost claculation')
 
 
 
@@ -83,24 +85,26 @@ def GetConfig(args):
         'run': 'debug',
         'experiment': 'synthetic_mot',
         'batch_size': 64,
-        'epochs': 50,
+        'epochs': 75,
         'lr': 5e-5,
-        'n': 200,
-        'k': 4,
-        'eps': 0.5,
+        'n': 5000,
+        'k': 3,
+        'eps': 1,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
-        'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_gw, sinkhorn_gw
+        'alg': 'ne_mgw',  # options - ne_mot, sinkhorn_mot,ne_mgw, sinkhorn_gw
         'hidden_dim': 32,
         'mod': 'mot',  # options - mot, mgw
         'seed': 1,
-        'data_dist': 'uniform',
+        'data_dist': 'uniform',   # options - uniform, gauss
+        'gauss_std': 1,
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dim': 1,
+        'dim': 5,
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,
-        'cost_graph': 'tree',  # The cost function graphical structure for decomposition. Options-full,circle,tree
+        'cost_graph': 'circle',  # The cost function graphical structure for decomposition. Options-full,circle,tree
+        'cost_implement': 'simplified',
 
 
         "wandb_entity": "dortsur",
@@ -108,6 +112,7 @@ def GetConfig(args):
         "schedule": 1,
         "schedule_step": 5,
         "schedule_gamma": 0.5,
+
 
         "clip_grads": 1,
         "max_grad_norm": 0.05,
@@ -133,11 +138,15 @@ def GetConfig(args):
         'gw_ns': [5000, 5000, 5000],
         'gw_same_n': 1,
         'gw_use_convex_eps': 1,
+        'A_mgw_opt': 'autograd',
 
         'save_results': True
     }
     # TD: ADJUST DIMS TO K
     config['batch_size'] = min(config['batch_size'], config['n'])
+
+    if len(config['dims']) != config['k']:
+        config['dims'] = list(range(1, config['k']+1))
 
     # Turn into Bunch object
     config = Config(config)

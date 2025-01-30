@@ -1,37 +1,37 @@
-program: ne_sinkhorn_comparison.py
+program: main.py
 method: grid
 metric:
   goal: maximize
   name: tot_loss
 parameters:
   experiment:
-    values: ['synthetic_mot_circle']
+    values: ['large_k_sweep_new']
   lr:
-    values: [0.0005]
+    values: [0.0001]
   alg:
     values: ['ne_mot']
   data_dist:
     values: ['uniform']
   cost_graph:
-    values: ['circle']
+    values: ['full']
   batch_size:
-    values: [64]
+    values: [32]
   epochs:
-    values: [100]
+    values: [35]
   k:
-    values: [3,5,7,9,15,25]
+    values: [3,5,7,9,11,13,15,17,19,21,23,25,30]
   n:
-    values: [5000]
+    values: [10000]
   eps:
-    values: [0.5, 0.1, 0.05]
+    values: [1]
   dim:
-    values: [1,4,7,10,13,16,19,22,25]
+    values: [1]
   seed:
-    values: [1,2,3]
+    values: [1]
   clip_grads:
     values: [1]
   max_grad_norm:
-    values: [0.1]
+    values: [0.05]
   cuda_visible:
     values: ['3']
   schedule:
@@ -42,8 +42,12 @@ parameters:
     values: [4]
   using_wandb:
     values: [1]
+  cost_implement:
+    values: ['simplified']
+  calc_ot_cost:
+    values: [ 0 ]
   wandb_project_name:
-    values: ["check_stability"]
+    values: ["testing_simplified"]
   run:
     values: ["sweeps"]
 
