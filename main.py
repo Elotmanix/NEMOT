@@ -9,8 +9,8 @@ import pprint
 def main():
     # TD:
     params = PreprocessMeta()
-    if params.alg in ['ne_mot', 'sinkhorn_mot'] or params.data_dist == 'uniform':
-        params.dims = [params.dim]*params.k
+    # if params.alg in ['ne_mot', 'sinkhorn_mot'] or params.data_dist == 'uniform':
+    params.dims = [params.dim]*params.k
 
     os.environ["CUDA_VISIBLE_DEVICES"] = str(params['cuda_visible'])
     device = torch.device("cuda:0" if (torch.cuda.is_available() and params['device'] == 'gpu') else "cpu")

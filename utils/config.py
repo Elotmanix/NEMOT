@@ -85,9 +85,9 @@ def GetConfig(args):
         'run': 'debug',
         'experiment': 'synthetic_mot',
         'batch_size': 64,
-        'epochs': 75,
-        'lr': 5e-5,
-        'n': 5000,
+        'epochs': 2,
+        'lr': 1e-4,
+        'n': 2500,
         'k': 3,
         'eps': 1,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
@@ -115,7 +115,7 @@ def GetConfig(args):
 
 
         "clip_grads": 1,
-        "max_grad_norm": 0.05,
+        "max_grad_norm": 0.5,
 
         "check_P_sum": 0,
 
@@ -134,8 +134,8 @@ def GetConfig(args):
 
 
         # GW params:
-        'dims': [1, 2, 3],
-        'gw_ns': [5000, 5000, 5000],
+        # 'dims': [1, 2, 3],
+        # 'gw_ns': [5000, 5000, 5000],
         'gw_same_n': 1,
         'gw_use_convex_eps': 1,
         'A_mgw_opt': 'autograd',
@@ -145,8 +145,8 @@ def GetConfig(args):
     # TD: ADJUST DIMS TO K
     config['batch_size'] = min(config['batch_size'], config['n'])
 
-    if len(config['dims']) != config['k']:
-        config['dims'] = list(range(1, config['k']+1))
+    # if len(config['dims']) != config['k']:
+    #     config['dims'] = list(range(1, config['k']+1))
 
     # Turn into Bunch object
     config = Config(config)

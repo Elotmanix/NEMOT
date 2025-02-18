@@ -485,7 +485,7 @@ class MGW_NE_alg(MOT_NE_alg):
                 self.opt_A = []
                 for i in range(self.k):
                     A = A_model(self.params.dims[i],self.params.dims[(i+1)%self.k])
-                    self.opt_A.append(torch.optim.Adam(A.parameters(), lr=self.params['lr']))
+                    self.opt_A.append(torch.optim.Adam(A.parameters(), lr=1e-4))
                     As.append(A.cuda())
             elif self.cost_graph == 'tree':
                 # k-1 matrices
@@ -614,9 +614,9 @@ class MGW_NE_alg(MOT_NE_alg):
         x_b = DataLoader(x_b, batch_size=self.batch_size, shuffle=True)
         self.tot_loss = []
         self.times = []
-        nemot_epochs = 4
+        nemot_epochs = 3
         for epoch in range(self.num_epochs):
-            A_opt_flag = epoch > 0 and epoch%nemot_epochs==0
+            A_opt_flag = epoch > 9 and epoch%nemot_epochs==0
             t0 = timer()
             l = []
             if A_opt_flag:
@@ -628,15 +628,15 @@ class MGW_NE_alg(MOT_NE_alg):
                         phi = [self.models[i](data[i]) for i in
                                range(self.k)]  # each phi[i] should have shape (b,1)
                         e_term = self.calc_exp_term_mgw(phi, data)
-                        loss = -(sum(phi).mean() - self.eps * e_term)
+                        loss_ = sum(phi).mean() - self.eps * e_term
                         frob_norms = 32*sum([model.A.norm(p='fro')**2 for model in self.A_matrices])
-                        loss = -loss + frob_norms
+                        loss = loss_ + frob_norms
                         loss.backward()
 
-                        if self.params.clip_grads:
-                            torch.nn.utils.clip_grad_norm_(self.A_matrices[k_ind].parameters(),
-                                                           self.params.max_grad_norm)
-                    self.opt_A[k_ind].step()
+                        # if self.params.clip_grads:
+                        #     torch.nn.utils.clip_grad_norm_(self.A_matrices[k_ind].parameters(),
+                        #                                    self.params.max_grad_norm)
+                        self.opt_A[k_ind].step()
                     l.append(loss.item())
                 self.tot_loss.append(np.mean(l) + self.eps)
             else:
@@ -659,7 +659,10 @@ class MGW_NE_alg(MOT_NE_alg):
             epoch_time = timer() - t0
             l = np.mean(l)
             self.times.append(epoch_time)
-            print(f'finished epoch {epoch}, loss: {-l + self.eps:.5f}')
+            if A_opt_flag:
+                print(f'finished epoch {epoch}, A opt loss: {l + self.eps:.5f}')
+            else:
+                print(f'finished epoch {epoch}, loss: {-l + self.eps:.5f}')
 
         #
 
@@ -754,6 +757,7 @@ class MGW_NE_alg(MOT_NE_alg):
         # self.models_to_eval
 
     def save_results(self,X=None):
+        S1 = self.calc_S1(X)
         tot_loss = np.mean(self.tot_loss[-10:])
         avg_time = np.mean(self.times)
         data_to_save = {
@@ -806,6 +810,68 @@ class MGW_NE_alg(MOT_NE_alg):
         # NOW - BROADCAST!!
         return cost
 
+    def calc_S1(self,X):
+        """
+        Generalized S1 calculation for a list of tensors [x0, x1, ..., x_{k-1}],
+        each of shape (n, d).
+
+        Returns a 1D torch tensor of length (k-1), where result[i] is the
+        S1 value computed for the pair (X[i], X[i+1]).
+        """
+        k = self.k
+        if k < 2:
+            raise ValueError("Need at least 2 variables to form a pair.")
+
+        results = []
+
+        for i in range(k):
+            x = X[i]
+            y = X[(i + 1)%k]
+
+            # Ensure x, y are 2D: (n, d)
+            if x.dim() != 2 or y.dim() != 2:
+                raise ValueError("Each tensor x[i] must be of shape (n, d).")
+
+            n = x.shape[0]
+
+            # 1) Compute norms (squared) along the rows (dim=1)
+            #    x_norm_2 and y_norm_2 each of shape (n,)
+            x_norm_2 = torch.norm(x, dim=1, p=2) ** 2
+            y_norm_2 = torch.norm(y, dim=1, p=2) ** 2
+
+            # Square them again to get x_norm_4, y_norm_4
+            x_norm_4 = x_norm_2 ** 2
+            y_norm_4 = y_norm_2 ** 2
+
+            # 2) Means along the n dimension
+            M2_x = x_norm_2.mean()
+            M2_y = y_norm_2.mean()
+            M4_x = x_norm_4.mean()
+            M4_y = y_norm_4.mean()
+
+            # 3) Average outer products => (d, d) shapes
+            sig_x = x.t().matmul(x) / n  # shape (d, d)
+            sig_y = y.t().matmul(y) / n  # shape (d, d)
+
+            # 4) Frobenius norms squared
+            #    (||sig_x||_F^2, ||sig_y||_F^2)
+            #    Using p='fro' in torch.norm, then square it:
+            F_x = torch.norm(sig_x, p='fro') ** 2
+            F_y = torch.norm(sig_y, p='fro') ** 2
+
+            # 5) S1 formula
+            S1_val = (
+                    2 * (M4_x + M4_y)
+                    + 2 * (M2_x ** 2 + M2_y ** 2)
+                    + 4 * (F_x + F_y)
+                    - 4 * (M2_x * M2_y)
+            )
+
+            # Keep it as a scalar tensor (not converting to Python float)
+            results.append(S1_val.unsqueeze(0))
+
+        # Stack into a 1D tensor of length k-1
+        return torch.cat(results, dim=0)
 
 class Net_EOT(nn.Module):
     def __init__(self,dim,K,deeper=False):
@@ -848,7 +914,7 @@ class NE_mot_model(nn.Module):
 class A_model(nn.Module):
     def __init__(self, d_in, d_out):
         super(A_model, self).__init__()
-        self.A = nn.Parameter(torch.full((d_in, d_out), 1e-4))
+        self.A = nn.Parameter(torch.full((d_in, d_out), 1e-3))
 
     def forward(self, x):
         x1, x2 = x
