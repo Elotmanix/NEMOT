@@ -9,6 +9,19 @@ from utils.data_fns import QuadCost, QuadCostGW, MultiTensorDataset
 from utils.tree_fns import create_tree
 import pickle
 import os
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+from jax import grad, value_and_grad
+import optax
+from functools import partial
+from jax.tree_util import tree_map
+import pickle
+import os
+from timeit import default_timer as timer
+from jax import random
+from jax.nn import relu
+
 
 
 class MOT_NE_alg():
@@ -457,7 +470,6 @@ class MOT_NE_alg():
             ot_plan = self.calc_pairwise_plan(exp_terms, i, (i + 1) % self.k, verbose=False)
             reg += (torch.sum(ot_plan)-1.0).abs()
         return reg
-
 
 class MGW_NE_alg(MOT_NE_alg):
     def __init__(self, params, device, X):
@@ -910,7 +922,6 @@ class NE_mot_model(nn.Module):
         x = self.fc2(x)
         return x
 
-
 class A_model(nn.Module):
     def __init__(self, d_in, d_out):
         super(A_model, self).__init__()
@@ -919,3 +930,275 @@ class A_model(nn.Module):
     def forward(self, x):
         x1, x2 = x
         return x1 @ self.A @ x2.T
+
+
+
+
+class MOT_NE_alg_JAX:
+    def __init__(self, params, device=None):  # Device is not explicitly used in JAX, it manages devices
+        self.params = params
+        self.k = params['k']
+        self.num_epochs = params['epochs']
+        self.batch_size = params['batch_size']
+        self.eps = params['eps']
+        self.cost_graph = params['cost_graph']
+        self.using_wandb = params['using_wandb']  # Assuming wandb is set up separately
+        self.key = jr.PRNGKey(0)  # Initialize a PRNGKey
+
+
+        # Initialize models and optimizers
+        self.models = []
+        self.opts = []
+        self.opt_states = []
+        for i in range(self.k):
+            self.key, subkey = jr.split(self.key)
+            d = params['dims'][i]
+            model = Net_EOT_JAX(dim=d, K=min(6 * d, 80), deeper=True)  # Replace with actual JAX Net_EOT
+            params_init = model.init(subkey)  # Assuming your Net_EOT has an init method
+            self.models.append((model, params_init))
+
+            optimizer = optax.adam(learning_rate=params['lr'])
+            opt_state = optimizer.init(params_init)
+            self.opts.append(optimizer)
+            self.opt_states.append(opt_state)
+
+        if params.get('schedule', False):
+            # Use piecewise_constant_schedule for step decay
+            boundaries_and_scales = {
+                int(params['schedule_step'] * i): params['schedule_gamma'] ** i
+                for i in range(1, int(self.num_epochs // params['schedule_step']) + 1)
+            }
+            self.schedulers = [optax.piecewise_constant_schedule(
+                init_value=params['lr'],
+                boundaries_and_scales=boundaries_and_scales
+            ) for _ in range(self.k)]
+
+        else:
+            self.schedulers = None
+
+
+        self.tree_root = create_tree(self.params) if self.params.get('cost_graph') == 'tree' else None
+
+    def calc_exp_term(self, phis, x):
+      reduced_phi = sum(phis)
+      if self.cost_graph == 'full':
+          diffs = jnp.expand_dims(x, axis=-1) - jnp.expand_dims(x, axis=-2)
+          cost = 0.5 * jnp.linalg.norm(diffs, axis=1) ** 2
+          e_term = jnp.exp((reduced_phi - cost.sum(axis=(1, 2))) / self.eps)
+      elif self.cost_graph == 'circle':
+          shifted_x = jnp.roll(x, shift=1, axis=-1)
+          diffs = x - shifted_x
+          cost = jnp.linalg.norm(diffs, axis=1) ** 2
+          e_term = jnp.exp((reduced_phi - cost.sum(axis=(-1))) / self.eps)
+      else:
+          raise ValueError(f"Unknown cost_graph: {self.cost_graph}")
+      return jnp.mean(e_term)
+
+
+
+    @partial(jax.jit, static_argnums=(0,))  # JIT compile the loss function
+    def _loss_fn(self, params_list, x):
+        phi_all = []
+        for i in range(self.k):
+            model, _ = self.models[i]  # model instance
+            phi = model.apply(params_list[i], x[:, :, i]) # (b, )
+            phi_all.append(jnp.expand_dims(phi,axis=-1))
+
+        e_term = self.calc_exp_term(phi_all, x)
+        loss = -(sum([p.mean() for p in phi_all]) - self.eps * e_term)
+        return loss , loss
+
+    def train_mot_(self, X):
+        # X is assumed to be a JAX array of shape (num_batches * batch_size, ...).
+        self.tot_loss = []
+        self.times = []
+        num_batches = X.shape[0] // self.batch_size
+
+        for epoch in range(self.num_epochs):
+            epoch_losses = []
+            t0 = timer()
+
+            # Iterate over batches (here we slice the data manually, similar to torch DataLoader)
+            for i in range(num_batches):
+                batch = X[i * self.batch_size:(i + 1) * self.batch_size]
+                # In JAX, you don't need to zero gradients because gradients are freshly computed.
+                # Gather current parameters for all models.
+                params_list = [params for _, params in self.models]
+
+                # Define a loss function that computes the loss for the current batch.
+                # Note: Each model in self.models is assumed to be a tuple (model, params).
+                def loss_fn(params_list):
+                    # Compute phi for each model on its corresponding slice.
+                    phi_list = [self.models[k][0].apply(params_list[k], batch[:, :, k])
+                                for k in range(self.k)]
+                    # Compute the exponential term from the pairwise cost.
+                    e_term = self.calc_exp_term(phi_list, batch)
+                    # Compute loss as in your Torch logic:
+                    #    loss = -(mean(sum(phi)) - self.eps * e_term)
+                    loss = -(sum([jnp.mean(phi) for phi in phi_list]) - self.eps * e_term)
+                    return loss
+
+                # Compute loss and gradients with respect to all model parameters.
+                loss_value, grads_list = jax.value_and_grad(loss_fn)(params_list)
+
+                # Update each model's parameters.
+                new_models = []
+                new_opt_states = []
+                for k_ind in range(self.k):
+                    grad = grads_list[k_ind]
+                    # Optionally clip gradients if enabled.
+                    if self.params.get('clip_grads', False):
+                        grad = jax.tree_util.tree_map(lambda g: jnp.clip(g, a_max=self.params['max_grad_norm']),
+                                                      grad)
+                    # Get updates and new optimizer state from your optimizer.
+                    updates, new_opt_state = self.opts[k_ind].update(grad, self.opt_states[k_ind],
+                                                                     params_list[k_ind])
+                    # Apply the updates.
+                    updated_params = optax.apply_updates(params_list[k_ind], updates)
+                    # Save the updated model parameters.
+                    model = self.models[k_ind][0]
+                    new_models.append((model, updated_params))
+                    new_opt_states.append(new_opt_state)
+
+                # Replace the old models and optimizer states.
+                self.models = new_models
+                self.opt_states = new_opt_states
+
+                epoch_losses.append(-loss_value+self.eps)
+
+            # Compute average loss for the epoch.
+            avg_loss = jnp.mean(jnp.array(epoch_losses))
+            self.tot_loss.append(float(avg_loss))
+            epoch_time = timer() - t0
+            self.times.append(epoch_time)
+            print(f'finished epoch {epoch}, loss={avg_loss:.5f}, took {epoch_time:.2f} seconds')
+
+
+    def train_mot(self, X):
+        X = jnp.array(X)  # Convert to JAX array.
+        self.tot_loss = []
+        self.times = []
+
+        for epoch in range(self.num_epochs):
+            t0 = timer()
+            epoch_losses = []
+            num_batches = X.shape[0] // self.batch_size
+            for i in range(num_batches):
+
+                batch = X[i*self.batch_size:(i+1)*self.batch_size]
+
+                loss_and_grad_fn = value_and_grad(self._loss_fn, argnums=0, has_aux=True)
+                params_list = [params for _, params in self.models]
+                (total_loss,loss_value), grads_list = loss_and_grad_fn(params_list, batch)
+
+                new_models = []
+                new_opt_states = []
+
+                for k_ind in range(self.k):
+                    if self.params.get('clip_grads', False):
+                        grads_list[k_ind] = tree_map(lambda g: jnp.clip(g, a_max=self.params['max_grad_norm']), grads_list[k_ind])
+
+                    updates, new_opt_state = self.opts[k_ind].update(grads_list[k_ind], self.opt_states[k_ind],params_list[k_ind])
+
+                    updated_params = optax.apply_updates(params_list[k_ind], updates)
+                    model, _ = self.models[k_ind]  # Get the model instance
+                    new_models.append((model, updated_params))
+                    new_opt_states.append(new_opt_state)
+
+                self.models = new_models
+                self.opt_states = new_opt_states #Update optimizer states
+
+                epoch_losses.append(loss_value)
+
+
+            if self.schedulers:
+                for sched in self.schedulers:
+                    # Assuming schedulers are implemented as optax transformations or functions
+                    # that adjust the optimizer state.
+                    # print("Learning rate decay not implemented")
+                    # print("update scheduler")
+                    #Not necessary here, just need to correctly initialize.
+                    pass
+
+
+            l = jnp.mean(jnp.array(epoch_losses)) #epoch loss
+            self.tot_loss.append(float(-l + self.eps))  # Convert to Python float for storage
+            epoch_time = timer() - t0
+            self.times.append(epoch_time)
+            print(f'finished epoch {epoch}, loss={-l + self.eps:.5f}, took {epoch_time:.2f} seconds')
+
+        # No need for a separate models_to_eval, just use self.models directly.
+        # In JAX, models are typically pure functions, and 'eval' mode isn't a concept.
+
+    def save_results(self, X=None):
+        tot_loss = jnp.mean(jnp.array(self.tot_loss[-10:]))
+        avg_time = jnp.mean(jnp.array(self.times))
+
+        data_to_save = {
+            'avg_loss': float(tot_loss),  # Ensure it's a Python float
+            'avg_time': float(avg_time),
+            'tot_loss': self.tot_loss,
+            'times': self.times,
+            'params': self.params,
+            # 'plan': plan, # removed plan,
+        }
+        path = os.path.join(self.params['figDir'], 'results.pkl')
+        with open(path, 'wb') as file:
+            pickle.dump(data_to_save, file)
+
+        if self.using_wandb:
+            # wandb.log({'tot_loss': tot_loss, 'avg_time': avg_time}) # removed wandb
+            pass
+        else:
+            print(f'Finished run, loss is {tot_loss:.5f}, average epoch time is {avg_time:.3f} seconds')
+
+    def calc_pairwise_coupling_regularizer(self, phi, x):
+        #Placeholder. Not used, as it is not in the minimal example.
+        return 0
+
+
+class Net_EOT_JAX:  # Consistent with previous code
+    def __init__(self, dim, K=None, deeper=None):  # K and deeper are ignored for this specific NN
+        self.dim = dim
+        # For a direct translation, K and deeper are not used, but kept for consistency
+        self.hidden_dim = 10*K  # Hidden dimension, matching original PyTorch code
+
+    def init(self, key):
+        # Initialize parameters using Glorot (Xavier) uniform initialization.
+        # This is a common and good practice.
+        key1, key2 = random.split(key)
+        fc1_w = random.uniform(key1, (self.dim, self.hidden_dim),
+                               minval=-jnp.sqrt(6/(self.dim+self.hidden_dim)),
+                               maxval=jnp.sqrt(6/(self.dim+self.hidden_dim)))  # Glorot/Xavier uniform
+        fc1_b = random.uniform(key1, (self.hidden_dim,),
+                               minval=-jnp.sqrt(6/(self.dim+self.hidden_dim)),
+                               maxval=jnp.sqrt(6/(self.dim+self.hidden_dim)))
+
+        fc2_w = random.uniform(key2, (self.hidden_dim, self.hidden_dim),
+                               minval=-jnp.sqrt(6/(self.hidden_dim+1)),
+                               maxval=jnp.sqrt(6/(self.hidden_dim+1)))
+        fc2_b = random.uniform(key2, (self.hidden_dim,),
+                               minval=-jnp.sqrt(6/(self.hidden_dim+1)),
+                               maxval=jnp.sqrt(6/(self.hidden_dim+1)))
+
+        fc3_w = random.uniform(key2, (self.hidden_dim, 1),
+                               minval=-jnp.sqrt(6 / (self.hidden_dim + 1)),
+                               maxval=jnp.sqrt(6 / (self.hidden_dim + 1)))
+        fc3_b = random.uniform(key2, (1,),
+                               minval=-jnp.sqrt(6 / (self.hidden_dim + 1)),
+                               maxval=jnp.sqrt(6 / (self.hidden_dim + 1)))
+
+        # Combine parameters into a dictionary (or a nested dictionary/tuple)
+        params = {
+            'fc1': {'w': fc1_w, 'b': fc1_b},
+            'fc2': {'w': fc2_w, 'b': fc2_b},
+            'fc3': {'w': fc3_w, 'b': fc3_b}
+        }
+        return params
+
+    def apply(self, params, x):
+        # Forward pass
+        x = relu(jnp.dot(x, params['fc1']['w']) + params['fc1']['b'])
+        x = relu(jnp.dot(x, params['fc2']['w']) + params['fc2']['b'])
+        x = jnp.dot(x, params['fc3']['w']) + params['fc3']['b']
+        return x.squeeze(-1)  # Remove the last dimension to match the PyTorch output shape (b,)
