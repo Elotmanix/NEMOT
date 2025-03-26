@@ -15,7 +15,8 @@ class MOT_Sinkhorn():
         self.eta = 1/self.eps
         self.k = params.k
         self.mus = MU
-        self.n = params.n
+        self.n = MU[0].shape[0]
+        # self.n = params.n
         self.ns = [params.n]*self.k
         self.tol = 1e-10
         if params.cost_graph == 'circle':

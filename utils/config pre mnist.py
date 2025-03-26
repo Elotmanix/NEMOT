@@ -50,7 +50,6 @@ def GetArgs():
     argparser.add_argument('--calc_ot_cost',  type=int, help='a flag to skip the ot cost claculation')
     argparser.add_argument('--cost_implement',  type=str, help='a flag to skip the ot cost claculation')
     argparser.add_argument('--gauss_std',  type=float, help='a flag to skip the ot cost claculation')
-    argparser.add_argument('--dataset',  type=str, help='dataset choice')
 
 
 
@@ -84,15 +83,15 @@ def PreprocessMeta():
 def GetConfig(args):
     config = {
         'run': 'debug',
-        'experiment': 'mnist',
-        'batch_size': 32,
-        'epochs': 100,
-        'lr': 1e-5,
+        'experiment': 'synthetic_mot',
+        'batch_size': 64,
+        'epochs': 50,
+        'lr': 1e-4,
         'n': 2500,
         'k': 3,
         'eps': 1,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
-        'alg': 'sinkhorn_mot',  # options - ne_mot, sinkhorn_mot,ne_mgw, sinkhorn_gw
+        'alg': 'ne_mot',  # options - ne_mot, sinkhorn_mot,ne_mgw, sinkhorn_gw
         'hidden_dim': 32,
         'mod': 'mot',  # options - mot, mgw
         'seed': 1,
@@ -101,7 +100,7 @@ def GetConfig(args):
         'gauss_std': 1,
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dim': 500,
+        'dim': 20,
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,
@@ -118,7 +117,7 @@ def GetConfig(args):
 
 
         "clip_grads": 1,
-        "max_grad_norm": 0.001,
+        "max_grad_norm": 0.5,
 
         "check_P_sum": 0,
 

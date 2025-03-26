@@ -1,47 +1,56 @@
-import numpy as np
+import os
+import ssl
+import numpy as np  # Ensure NumPy is imported
 import torch
 from torch.utils.data import Dataset, DataLoader
+import jax.numpy as jnp
+import jax.random as jr
+from torchvision import datasets, transforms
+from PIL import Image
+import torchvision.transforms.functional as TF
 
 
-def gen_data(params):
-    if params['data_dist'] == 'uniform':
 
-        if params['euler'] == 1:
-            '''
-            generate euler flow samples - n evenly spaces samples along [0,1]
-            '''
-            X = [np.linspace(0, 1, params['n'], dtype=np.float32).reshape(params['n'], 1).astype(np.float32)]*params['k']
-        else:
-            # generate k samples which are d-dimensional with n samples (from Taos's notebook)
+def gen_data(params, dataset=None):
+    if params.dataset == 'mnist':
+        X = gen_mnist_tensor(params)
+        if params['alg'] == 'sinkhorn_mot':
+            n = X.shape[0]
+            MU = [(1 /n) * np.ones(n)]*params['k']
+            return X, MU
+        return X
+    else:
+        if params['data_dist'] == 'uniform':
+
+            if params['euler'] == 1:
+                '''
+                generate euler flow samples - n evenly spaces samples along [0,1]
+                '''
+                X = [np.linspace(0, 1, params['n'], dtype=np.float32).reshape(params['n'], 1).astype(np.float32)]*params['k']
+            else:
+                # generate k samples which are d-dimensional with n samples (from Taos's notebook)
+                X = []
+                for i in range(params['k']):
+                    X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
+
+        elif params['data_dist'] == 'gauss':
             X = []
             for i in range(params['k']):
-                X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
+                std = params.gauss_std/np.sqrt(params['dims'][i])
+                X.append(
+                    std*np.random.normal(size=(params['n'], params['dims'][i])).astype(np.float32)
+                    # np.random.uniform(-1 / np.sqrt(params['dims'][i]), 1 / np.sqrt(params['dims'][i]),
+                    #                        (params['n'], params['dims'][i])).astype(np.float32)
+                )
 
-    elif params['data_dist'] == 'gauss':
-        X = []
-        for i in range(params['k']):
-            std = params.gauss_std/np.sqrt(params['dims'][i])
-            X.append(
-                std*np.random.normal(size=(params['n'], params['dims'][i])).astype(np.float32)
-                # np.random.uniform(-1 / np.sqrt(params['dims'][i]), 1 / np.sqrt(params['dims'][i]),
-                #                        (params['n'], params['dims'][i])).astype(np.float32)
-            )
-
-    if params['alg'] not in ('ne_mgw','ne_mot'):
-        X = np.stack(X, axis=-1)
-        MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
-        return X, MU
-    elif params['alg'] == 'ne_mot':
-        X = torch.from_numpy(np.stack(X, axis=-1))
-    elif params['alg'] == 'ne_mgw':
-        X = [torch.from_numpy(x) for x in X]
-
-
-
-
-
-
-
+        if params['alg'] not in ('ne_mgw','ne_mot'):
+            X = np.stack(X, axis=-1)
+            MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
+            return X, MU
+        elif params['alg'] == 'ne_mot':
+            X = torch.from_numpy(np.stack(X, axis=-1))
+        elif params['alg'] == 'ne_mgw':
+            X = [torch.from_numpy(x) for x in X]
     return X
 
 
@@ -276,7 +285,7 @@ class MultiTensorDataset(Dataset):
         self.tensors = tensor_list
         self.n_samples = tensor_list[0].shape[0]  # Number of samples
         # Ensure all tensors have the same number of samples
-        assert all(tensor.shape[0] == self.n_samples for tensor in tensor_list), \
+        assert all(tensor.shape[0] == self.n_samples for tensor in self.tensors), \
             "All tensors must have the same number of samples (first dimension)."
 
     def __len__(self):
@@ -287,3 +296,139 @@ class MultiTensorDataset(Dataset):
         Return the sample at the given index as a tuple of tensors.
         """
         return tuple(tensor[index] for tensor in self.tensors)
+
+
+def gen_mnist(params):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,)),  # Normalize to mean 0.1307 and std 0.3081
+        transforms.Lambda(lambda x: (x - x.min()) / (x.max() - x.min()))  # Map back to [0, 1]
+    ])
+    mnist_path = './data/mnist_data/'
+    if not os.path.exists(mnist_path):
+        raise RuntimeError(f"MNIST dataset not found at {mnist_path}")
+
+    # Disable SSL verification
+    ssl._create_default_https_context = ssl._create_unverified_context
+    
+    mnist_train = datasets.MNIST(root=mnist_path, train=False, download=True, transform=transform)
+    mnist_loader = DataLoader(mnist_train, batch_size=params['batch_size'], shuffle=True)
+    return mnist_loader
+
+def gen_mnist_tensor(params):
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.1307,), (0.3081,)),  # Normalize to mean 0.1307 and std 0.3081
+        transforms.Lambda(lambda x: (x - x.min()) / (x.max() - x.min()))  # Map back to [0, 1]
+    ])
+    mnist_path = './data/mnist_data/'
+    if not os.path.exists(mnist_path):
+        raise RuntimeError(f"MNIST dataset not found at {mnist_path}")
+
+    # Disable SSL verification
+    ssl._create_default_https_context = ssl._create_unverified_context
+    
+    mnist_train = datasets.MNIST(root=mnist_path, train=False, download=True, transform=transform)
+    data = mnist_train.data.float().view(-1, 784)
+    labels = mnist_train.targets
+    class_data = {i: [] for i in range(10)}
+
+    for img, label in zip(data, labels): # collect data according to labels:
+        class_data[int(label)].append(img)
+    for i in range(10): # stack into tensors:
+        class_data[i] = torch.stack(class_data[i], dim=0)
+    n = min(class_data[i].shape[0] for i in range(10))
+
+    balanced_data = []
+    for i in range(10):
+        balanced_data.append(class_data[i][:n])
+
+    mnist_tensor = torch.stack(balanced_data, dim=-1)
+
+    mnist_tensor = mnist_tensor[:,:,:params.k]
+
+    return mnist_tensor
+
+def gen_data_JAX(params):
+    key = jr.PRNGKey(params.get('seed', 0))  # Use a seed for reproducibility, default to 0
+
+    if params.dataset == 'mnist':
+        X = gen_mnist(params)
+    elif params['data_dist'] == 'uniform':
+        if params.get('euler', 0) == 1:  # Use .get() for safety, default to 0
+            X = [jnp.linspace(0, 1, params['n'], dtype=jnp.float32).reshape(params['n'], 1) for _ in range(params['k'])]
+        else:
+            X = []
+            for i in range(params['k']):
+                key, subkey = jr.split(key)
+                low = -1 / jnp.sqrt(params['dims'][i])
+                high = 1 / jnp.sqrt(params['dims'][i])
+                x = jr.uniform(subkey, (params['n'], params['dims'][i]), minval=low, maxval=high, dtype=jnp.float32)
+                X.append(x)
+
+    elif params['data_dist'] == 'gauss':
+        X = []
+        for i in range(params['k']):
+            key, subkey = jr.split(key)
+            std = params['gauss_std'] / jnp.sqrt(params['dims'][i])
+            x = std * jr.normal(subkey, (params['n'], params['dims'][i]), dtype=jnp.float32)
+            X.append(x)
+    
+    else:
+        raise ValueError(f"Unknown data distribution: {params['data_dist']}")
+    if params.dataset != 'mnist':
+        if params['alg'] not in ('ne_mgw', 'ne_mot'):
+            X = jnp.stack(X, axis=-1)
+            MU = [(1 / params['n']) * jnp.ones(params['n']) for _ in range(params['k'])]
+            return X, MU  # Return both X and MU (as JAX arrays)
+        elif params['alg'] == 'ne_mot':
+            X = jnp.stack(X, axis=-1)  # Directly stack as JAX array
+        elif params['alg'] == 'ne_mgw':
+            pass # X is already a list of JAX arrays.
+        else:
+            raise ValueError("Unknown value for params['alg']")
+
+    return X
+
+
+def rotate(img, angle=15):
+    """
+    Rotate the image by the specified angle (in degrees).
+    
+    Args:
+        angle: Rotation angle in degrees (default is 15) - don't exceed (-15,15).
+    
+    Returns:
+        Rotated image.
+    """
+    return TF.rotate(img, angle)
+
+
+def translate(img, translate_vector=(2, 0)):
+    """
+    Translate the image using an affine transformation.
+    
+    Args:
+        translate_vector: A tuple (tx, ty) indicating pixel shifts (default is (2, 0)) - don exceed (+-2,+-2).
+    
+    Returns:
+        Translated image.
+    """
+    # angle is 0 and scale is 1.0, shear is 0 by default for a pure translation
+    return TF.affine(img, angle=0, translate=translate_vector, scale=1.0, shear=0)
+
+
+def perspective_warp(img, 
+                     startpoints=[(0, 0), (28, 0), (0, 28), (28, 28)], 
+                     endpoints=[(2, 2), (26, 0), (2, 26), (28, 28)]):
+    """
+    Apply a perspective warp to the image based on provided points.
+    
+    Args:
+        startpoints: List of four tuples indicating the source coordinates.
+        endpoints: List of four tuples indicating the destination coordinates.
+        
+    Returns:
+        Warped image.
+    """
+    return TF.perspective(img, startpoints, endpoints)

@@ -22,14 +22,15 @@ def main():
         print(f"{key: <15}: {value}")
     print("=" * 20)
 
-    if params.alg == 'sinkhorn_mot' and params.cost_graph == 'full' and params.n >= 750:
+    if params.alg == 'sinkhorn_mot' and params.cost_graph == 'full' and params.n >= 750 and params.dataset != 'mnist':
         params.n = 500
         print(f'n is too big for sinkhorn algorithm. Setting n to {params.n}')
     X = gen_data(params)
 
     if params.alg == 'ne_mot':
+        dim = X.shape[1]
         X = X.to(device)
-        MOT_agent = MOT_NE_alg(params, device)
+        MOT_agent = MOT_NE_alg(params, device, dim)
         MOT_agent.train_mot(X)
         # MOT_agent.calc_plan(X)
     elif params.alg == 'sinkhorn_mot':

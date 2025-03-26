@@ -5,7 +5,7 @@ import wandb
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from timeit import default_timer as timer
-from utils.data_fns import QuadCost, QuadCostGW, MultiTensorDataset
+from utils.data_fns import QuadCost, QuadCostGW, MultiTensorDataset, rotate, translate, perspective_warp
 from utils.tree_fns import create_tree
 import pickle
 import os
@@ -21,22 +21,26 @@ import os
 from timeit import default_timer as timer
 from jax import random
 from jax.nn import relu
-
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
 
 
 class MOT_NE_alg():
-    def __init__(self, params, device):
+    def __init__(self, params, device, d):
         self.models = []
         self.params = params
-        self.k = params['k']
+        if params.dataset == 'mnist':
+            self.k = min(10,params.k)
+        else:
+            self.k = params['k']
         self.num_epochs = params['epochs']
         self.batch_size = params['batch_size']
         self.eps = params['eps']
-        for i in range(params['k']):
+        for i in range(self.k):
             # model = NE_mot_model(dim=params['dims'][i], hidden_dim=params['hidden_dim'])
             # model.to(device)
             ### Tao's
-            d = params['dims'][i]
+            # d = params['dims'][i]
             model = Net_EOT(dim=d, K=min(6*d,80), deeper=True).to(device)
             ###
             self.models.append(model)
@@ -184,6 +188,9 @@ class MOT_NE_alg():
                 diffs = x.unsqueeze(-1) - x.unsqueeze(-2)
                 # calc cost. this method counts all cost terms twice, se we divide the cost by 2.
                 cost = 0.5*torch.norm(diffs, dim=1) ** 2
+                if self.params.dataset == 'mnist':
+                    # cost = cost/x.shape[1]
+                    cost = cost/cost.max()
                 e_term = torch.exp((reduced_phi - cost.sum(axis=(1,2)))/self.eps)
             elif self.cost_graph == 'circle':
                 shifted_x = torch.roll(x, shifts=1, dims=-1)
@@ -273,7 +280,9 @@ class MOT_NE_alg():
         elif self.cost == 'ip_gw':
             # IMPLEMENT - cost = IPCostGW(data, self.matrices)
             pass
-
+        
+        if self.params.dataset == 'mnist':
+            cost = cost/data.shape[1]
         # NOW - BROADCAST!!
         return cost
 
@@ -333,7 +342,7 @@ class MOT_NE_alg():
                     A = A@L[l]
                 else:
                     B = B@L[l]
-            C = A*B
+            C = A * B
             print(f'adjacent with zero, P adds up to {torch.sum(C)}')
             return C/(n**k)
         elif j == (i+1)%k:
@@ -902,6 +911,9 @@ class Net_EOT(nn.Module):
             x1 = F.relu(self.fc1(x))
             x11 = F.relu(self.fc2(x1))
             x2 = self.fc3(x11)
+            ###
+            # x2 = F.tanh(x2)
+            ###
         else:
             x1 = F.relu(self.fc1(x))
             x2 = self.fc2(x1)
@@ -1160,6 +1172,8 @@ class MOT_NE_alg_JAX:
 class Net_EOT_JAX:  # Consistent with previous code
     def __init__(self, dim, K=None, deeper=None):  # K and deeper are ignored for this specific NN
         self.dim = dim
+        if K is None:
+            K=dim
         # For a direct translation, K and deeper are not used, but kept for consistency
         self.hidden_dim = 10*K  # Hidden dimension, matching original PyTorch code
 
@@ -1202,3 +1216,341 @@ class Net_EOT_JAX:  # Consistent with previous code
         x = relu(jnp.dot(x, params['fc2']['w']) + params['fc2']['b'])
         x = jnp.dot(x, params['fc3']['w']) + params['fc3']['b']
         return x.squeeze(-1)  # Remove the last dimension to match the PyTorch output shape (b,)
+
+
+############################################################################################################
+############################################################################################################
+############################################################################################################
+############################################################################################################
+
+class encoder_model_JAX:
+    def __init__(self, k, dataset, out_dim=10):
+        if dataset == 'mnist':
+            self.angles = [-15, 15, -10, 10, -5]
+            self.translations = [(-2, -2), (2, 2), (-2, 2), (2, -2), (-1, 1)]
+        self.k = k
+        self.out_dim = out_dim
+        self.hidden_dim = 256  # You can adjust this as needed
+
+    def gen_k_views(self, images):
+        """
+        generate k views of the data
+        """
+        transformed_images = []
+        for image in images:
+            transformed = []
+            for i in range(self.k):
+                if i % 2:
+                    # rotate
+                    new_img = rotate(image, self.angles[i // 2])
+                else:
+                    # translate
+                    new_img = translate(image, self.translations[i // 2])
+                transformed.append(new_img)
+                transformed_img = torch.stack(transformed, dim=1)
+            transformed_images.append(transformed_img)
+        return torch.concatenate(transformed_images, dim=0)
+
+    def init(self, key):
+        """
+        Initialize the encoder model parameters using Glorot (Xavier) uniform initialization.
+        """
+        key1, key2, key3 = jr.split(key, 3)
+        fc1_w = jr.uniform(key1, (784, self.hidden_dim),
+                           minval=-jnp.sqrt(6 / (784 + self.hidden_dim)),
+                           maxval=jnp.sqrt(6 / (784 + self.hidden_dim)))  # Glorot/Xavier uniform
+        fc1_b = jr.uniform(key1, (self.hidden_dim,),
+                           minval=-jnp.sqrt(6 / (784 + self.hidden_dim)),
+                           maxval=jnp.sqrt(6 / (784 + self.hidden_dim)))
+
+        fc2_w = jr.uniform(key2, (self.hidden_dim, self.hidden_dim),
+                           minval=-jnp.sqrt(6 / (self.hidden_dim + self.hidden_dim)),
+                           maxval=jnp.sqrt(6 / (self.hidden_dim + self.hidden_dim)))
+        fc2_b = jr.uniform(key2, (self.hidden_dim,),
+                           minval=-jnp.sqrt(6 / (self.hidden_dim + self.hidden_dim)),
+                           maxval=jnp.sqrt(6 / (self.hidden_dim + self.hidden_dim)))
+
+        fc3_w = jr.uniform(key3, (self.hidden_dim, self.out_dim),
+                           minval=-jnp.sqrt(6 / (self.hidden_dim + self.out_dim)),
+                           maxval=jnp.sqrt(6 / (self.hidden_dim + self.out_dim)))
+        fc3_b = jr.uniform(key3, (self.out_dim,),
+                           minval=-jnp.sqrt(6 / (self.hidden_dim + self.out_dim)),
+                           maxval=jnp.sqrt(6 / (self.hidden_dim + self.out_dim)))
+
+        params = {
+            'fc1': {'w': fc1_w, 'b': fc1_b},
+            'fc2': {'w': fc2_w, 'b': fc2_b},
+            'fc3': {'w': fc3_w, 'b': fc3_b}
+        }
+        return params
+
+    def apply(self, params, x):
+        """
+        Forward pass of the encoder model.
+        """
+        x = relu(jnp.dot(x, params['fc1']['w']) + params['fc1']['b'])
+        x = relu(jnp.dot(x, params['fc2']['w']) + params['fc2']['b'])
+        x = jnp.dot(x, params['fc3']['w']) + params['fc3']['b']
+        return x
+    
+    def apply(self, params, x):
+        """
+        Forward pass of the encoder model.
+        """
+        return x
+    
+
+class contrastiveLearningTrainer:
+    def __init__(self, params):
+        self.key = jr.PRNGKey(0)
+        self.params=params
+        self.k = params.k
+
+
+        # Initialize the dictionary to hold models and parameters, each model is a (model,params) pair
+        self.models = {
+            'nemot': {
+                'model': self._initialize_nemot_models(params)
+            },
+            'enc': {
+                'model': self._initialize_enc_model(params)
+            }
+        }
+
+        # Initialize optimizers and optimizer states
+        self.opt = {
+            'nemot': [],
+            'enc': None
+        }
+        self.opt_states = {
+            'nemot': [],
+            'enc': None
+        }
+
+        # Initialize NEMOT optimizers
+        for _, model_params in self.models['nemot']['model']:
+            optimizer = optax.adam(learning_rate=params['lr'])
+            opt_state = optimizer.init(model_params)
+            self.opt['nemot'].append(optimizer)
+            self.opt_states['nemot'].append(opt_state)
+
+        # Initialize encoder optimizer
+        enc_optimizer = optax.adam(learning_rate=params['lr'])
+        enc_opt_state = enc_optimizer.init(self.models['enc']['model'][1])
+        # enc_opt_state = enc_optimizer.init(self.models['enc']['model'][0].init(self.models['enc']['model'][1]))
+        self.opt['enc'] = enc_optimizer
+        self.opt_states['enc'] = enc_opt_state
+
+        self.cost_graph = params['cost_graph']
+        self.eps = params['eps']
+
+    def _initialize_nemot_models(self, params):
+        # Initialize k Net_EOT_JAX models as in the MOT_NE_alg_JAX class
+        nemot_models = []
+        for _ in range(params['k']):
+            d = self.params['enc_dim']
+            model = Net_EOT_JAX(dim=d,K=min(6 * d, 80))  # Assuming Net_EOT_JAX is defined elsewhere
+            params_init = model.init(jr.PRNGKey(0))  # Initialize model parameters
+            nemot_models.append((model, params_init))
+        return nemot_models
+
+    def _initialize_enc_model(self, params):
+        # Initialize the encoder model from encoder_model_JAX
+        model = encoder_model_JAX(params.k, params.dataset)  # Assuming encoder_model_JAX is defined elsewhere
+        params_init = model.init(jr.PRNGKey(0))  # Initialize model parameters
+        return (model, params_init)
+
+    # ...existing code for other methods...
+
+    def torch_to_jax(self, images, labels):
+        """
+        maps a torch batch  from a dataloader to jax format
+        """
+        jax_images = jnp.array(images.numpy())
+        jax_labels = jnp.array(labels.numpy())
+        return jax_images, jax_labels
+        
+
+    def train(self, dataloader):
+        """
+        models - dictionary, contains the NEMOT models (if NEMOT is trained) and contrastive encoder
+        training routine for the contrastive learning framework. 
+        flow (for each batch in an epoch):
+        1. obtain k views of the data
+        2. obtain embedding from the contrastive encoder for each view 
+        3. pass embeddings through NEMOT or through Sinkhorn
+        4. calculate the contrastive loss 
+        5. backprop to update the training model (either NEMOT or contrastive encoder)
+        """
+        self.tot_loss = []
+        self.times = []
+        self.evaluate_linear_classifier(dataloader)
+        for epoch in range(self.params.epochs):
+            epoch_losses = []
+            t0 = timer()
+            # training_nemot = epoch ==0 or epoch%4
+            # training_nemot = epoch%4==0
+            training_nemot = 1
+
+            for images, labels in dataloader:
+                images = self.models['enc']['model'][0].gen_k_views(images)  # generate k predetermined views of the data
+                images, labels = self.torch_to_jax(images, labels)  # map to jax format
+                
+                if self.params.dataset == 'mnist':
+                    images = images.reshape(images.shape[0], images.shape[1], -1)  # flatten the images
+
+                training_params = {
+                    'encoder': self.models['enc']['model'][1],
+                    'nemot': [params for _, params in self.models['nemot']['model']]
+                }
+
+                def loss_fn_nemot(training_params, x):
+                    data = self.models['enc']['model'][0].apply(training_params['encoder'], x)  # apply encoder
+                    phi_list = [self.models['nemot']['model'][k][0].apply(training_params['nemot'][k], data[:, k, :]) # Compute phi for each model on its corresponding slice.
+                                for k in range(self.k)]
+                    e_term = self.calc_exp_term(phi_list, data) # Compute the exponential term from the pairwise cost.
+                    loss = -(sum([jnp.mean(phi) for phi in phi_list]) - self.eps * e_term)
+                    return loss, loss
+                def loss_fn_enc(training_params, x):
+                    data = self.models['enc']['model'][0].apply(training_params['encoder'], x)  # apply encoder
+                    phi_list = [self.models['nemot']['model'][k][0].apply(training_params['nemot'][k], data[:, k, :]) # Compute phi for each model on its corresponding slice.
+                                for k in range(self.k)]
+                    e_term = self.calc_exp_term(phi_list, data) # Compute the exponential term from the pairwise cost.
+                    loss = (sum([jnp.mean(phi) for phi in phi_list]) - self.eps * e_term)
+                    return loss, loss
+                
+                if training_nemot:
+                    loss_and_grad_fn = value_and_grad(loss_fn_nemot, argnums=0, has_aux=True)
+                else:
+                    loss_and_grad_fn = value_and_grad(loss_fn_enc, argnums=0, has_aux=True)
+                
+                (total_loss,loss_value), grads_list = loss_and_grad_fn(training_params, images)
+
+                if training_nemot:
+                    # params_to_update = [params for _, params in self.models['nemot']['model']]
+                    
+                    new_models = []
+                    new_opt_states = []
+
+                    for k_ind in range(self.k):
+                        if self.params.get('clip_grads', False):
+                            grads_list['nemot'][k_ind] = tree_map(lambda g: jnp.clip(g, a_max=self.params['max_grad_norm']), grads_list['nemot'][k_ind])
+
+                        updates, new_opt_state = self.opt['nemot'][k_ind].update(grads_list['nemot'][k_ind], self.opt_states['nemot'][k_ind],training_params['nemot'][k_ind])
+
+                        updated_params = optax.apply_updates(training_params['nemot'][k_ind], updates)
+                        model, _ = self.models['nemot']['model'][k_ind]  # Get the model instance
+                        new_models.append((model, updated_params))
+                        new_opt_states.append(new_opt_state)
+
+                    self.models['nemot']['model'] = new_models
+                    self.opt_states['nemot'] = new_opt_states #Update optimizer states
+                else:
+                    if self.params.get('clip_grads', False):
+                        grads_list['enc'] = tree_map(lambda g: jnp.clip(g, a_max=self.params['max_grad_norm']), grads_list['encoder'])
+                    updates, new_opt_state = self.opt['enc'].update(grads_list['encoder'], self.opt_states['enc'],training_params['encoder'])
+                    updated_params = optax.apply_updates(training_params['encoder'], updates)
+                    model, _ = self.models['enc']['model']  # Get the model instance
+                    self.models['end'] = (model, updated_params)
+                    self.opt_states['enc'] = new_opt_state
+
+                epoch_losses.append(loss_value)
+            # Compute average loss for the epoch.
+            l = jnp.mean(jnp.array(epoch_losses)) #epoch loss
+            self.tot_loss.append(float(-l + self.eps))
+            epoch_time = timer() - t0
+            self.times.append(epoch_time)
+            if training_nemot:
+                print(f'finished (nemot) epoch {epoch}, loss={-l + self.eps:.5f}, took {epoch_time:.2f} seconds')
+            else:
+                print(f'finished (enc) epoch {epoch}, loss={l + self.eps:.5f}, took {epoch_time:.2f} seconds')
+                self.evaluate_linear_classifier(dataloader)
+
+    
+    def eval(self, dataloader, models):
+        """
+        evaluation of the contrastive learning model.
+        use the model to obtain the embeddings of the data and train a linear classifier on them. (all of them?)
+        """
+        pass
+    
+    # @partial(jax.jit, static_argnums=(0,))  # JIT compile the loss function
+    def _new_loss_fn(self, params, x):
+        """
+        loss fn operation:
+        1. apply encoders
+        2. apply phi models to Xs 
+        3. calc nemot loss  
+        """
+        phi_all = []
+        enc_model = self.models['enc']['model']
+        for i in range(self.k):
+            x_i = enc_model.apply(params['enc'], x[:,:,i])
+            model, _ = self.models['nemot']['model'][i]  # model instance
+            phi = model.apply(params['nemot'][i], x_i) # (b, )
+            phi_all.append(jnp.expand_dims(phi,axis=-1))
+
+        e_term = self.calc_exp_term(phi_all, x)
+        loss = -(sum([p.mean() for p in phi_all]) - self.eps * e_term)
+        return loss , loss
+
+    def calc_exp_term(self, phis, x):
+        reduced_phi = sum(phis)
+        if self.cost_graph == 'full':
+            diffs = jnp.expand_dims(x, axis=-1) - jnp.expand_dims(x, axis=-2)
+            cost = 0.5 * jnp.linalg.norm(diffs, axis=1) ** 2
+            e_term = jnp.exp((reduced_phi - cost.sum(axis=(1, 2))) / self.eps)
+        elif self.cost_graph == 'circle':
+            shifted_x = jnp.roll(x, shift=1, axis=-1)
+            diffs = x - shifted_x
+            cost = jnp.linalg.norm(diffs, axis=1) ** 2
+            e_term = jnp.exp((reduced_phi - cost.sum(axis=(-1))) / self.eps)
+        else:
+            raise ValueError(f"Unknown cost_graph: {self.cost_graph}")
+        return jnp.mean(e_term)
+    
+    def evaluate_linear_classifier(self, dataloader):
+        """
+        Evaluate the performance of a linear classifier on the encoded data.
+        
+        Args:
+            dataloader: The dataloader for the dataset.
+        """
+        embeddings = []
+        labels = []
+
+        # Get embeddings for the entire dataset
+        for images, lbls in dataloader:
+            images = self.models['enc']['model'][0].gen_k_views(images)  # generate k predetermined views of the data
+            images, lbls = self.torch_to_jax(images, lbls)  # map to jax format
+
+            if self.params.dataset == 'mnist':
+                images = images.reshape(images.shape[0], images.shape[1], -1)  # flatten the images
+
+            encodings = self.models['enc']['model'][0].apply(self.models['enc']['model'][1], images)
+            embeddings.append(encodings)
+            labels.append(lbls)
+
+        embeddings = jnp.concatenate(embeddings, axis=0)
+        labels = jnp.concatenate(labels, axis=0)
+
+        # k_ind = 0
+        # embeddings = embeddings[:, k_ind, :]    # work with the encoding of a specific view
+
+        # Flatten embeddings
+        embeddings = embeddings.reshape(embeddings.shape[0], -1)
+
+        # Split data into train and test sets
+        split_idx = int(0.8 * len(embeddings))
+        X_train, X_test = embeddings[:split_idx], embeddings[split_idx:]
+        y_train, y_test = labels[:split_idx], labels[split_idx:]
+
+        # Train a linear classifier
+        classifier = LogisticRegression()
+        classifier.fit(np.array(X_train), np.array(y_train))
+
+        # Evaluate the classifier
+        y_pred = classifier.predict(np.array(X_test))
+        accuracy = accuracy_score(np.array(y_test), y_pred)
+
+        print(f"Linear classifier accuracy: {accuracy:.4f}")
