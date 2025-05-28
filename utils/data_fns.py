@@ -53,19 +53,28 @@ def gen_data(params, dataset=None):
             return X
 
 
-def QuadCost(data):
+def CoulombCost(data):
     '''
-    Calculate the squared L2 distance matrices between all pairs of points.
+    Calculate the Coulomb cost: sum_{i<j} 1/||r_i - r_j||
+    Args:
+        data: tensor of shape (batch_size, d, k) containing k d-dimensional points
+    Returns:
+        tensor of shape (batch_size,) containing the Coulomb cost for each batch
     '''
     k = data.shape[2]
-    differences = []
+    costs = []
+    eps = 1e-6  # Small constant to avoid division by zero
+    
     for i in range(k):
-        for j in range(k):
-            if i != j:
-                diff = data[:,:,i].unsqueeze(2) - data[:,:,j].unsqueeze(1)
-                differences.append(torch.sum(diff**2, dim=-1))
-    differences = torch.stack(differences)
-    return differences
+        for j in range(i+1, k):  # Note: j>i to avoid double counting
+            diff = data[:,:,i].unsqueeze(2) - data[:,:,j].unsqueeze(1)
+            # Calculate Euclidean distance (adding small eps to avoid division by zero)
+            dist = torch.sqrt(torch.sum(diff**2, dim=-1) + eps)
+            # Calculate 1/r Coulomb potential
+            costs.append(1.0 / dist)
+    
+    costs = torch.stack(costs)
+    return costs
 
 
 def QuadCostGW(data, matrices, mod='circle'):

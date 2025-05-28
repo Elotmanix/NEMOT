@@ -210,14 +210,7 @@ class MOT_NE_alg():
         :param data:
         :return:
         """
-        if self.cost == 'quad':
-            cost = QuadCost(data)
-        elif self.cost == 'quad_gw':
-            # IMPLEMENT - cost = QuadCostGW(data, self.matrices)
-            pass
-        elif self.cost == 'ip_gw':
-            # IMPLEMENT - cost = IPCostGW(data, self.matrices)
-            pass
+        cost = CoulombCost(data)
         
         if self.params.dataset == 'mnist':
             cost = cost/data.shape[1]

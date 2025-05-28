@@ -24,7 +24,7 @@ def GetArgs():
     argparser.add_argument('--n',  type=int, help='Sample size')
     argparser.add_argument('--k',  type=int, help='Number of iterations')
     argparser.add_argument('--eps',  type=float, help='Epsilon value for regularisation')
-    argparser.add_argument('--cost',  type=str, choices=['quad', 'quad_gw', 'ip_gw'], help='Cost function')
+    argparser.add_argument('--cost', type=str, default='coulomb', choices=['coulomb'], help='Cost function')
     argparser.add_argument('--alg',  type=str, choices=['ne_mot', 'sinkhorn_mot'],
                         help='Algorithm')
     argparser.add_argument('--hidden_dim',  type=int, help='Dimension of hidden layers')
@@ -36,7 +36,7 @@ def GetArgs():
     argparser.add_argument('--device',  type=str, help='Device to use')
     argparser.add_argument('--cuda_visible',  type=int, help='CUDA visible device')
     argparser.add_argument('--using_wandb',  type=int, help='Use Weights & Biases logging')
-    argparser.add_argument('--cost_graph',  type=str, choices=['full', 'circle', 'tree'],
+    argparser.add_argument('--cost_graph',  type=str, choices=['full'],
                         help='Graphical structure of the cost function')
     argparser.add_argument('--schedule_gamma',  type=float, help='scheduler multiplier')
     argparser.add_argument('--schedule',  type=int, help='scheduling flag')
@@ -91,7 +91,7 @@ def GetConfig(args):
         'n': 2500,
         'k': 3,
         'eps': 1,
-        'cost': 'quad',  # options - quad, quad_gw, ip_gw
+        'cost': 'coulomb',  # Coulomb potential cost: 1/||r_i - r_j||
         'alg': 'sinkhorn_mot',  # options - ne_mot, sinkhorn_mot
         'hidden_dim': 32,
         'mod': 'mot',  # options - mot
@@ -110,7 +110,7 @@ def GetConfig(args):
         'enc_dim': 784,
 
 
-        "wandb_entity": <WANDB_IDNETITY>,
+        "wandb_entity": "your_wandb_entity",
 
         "schedule": 1,
         "schedule_step": 5,
