@@ -32,7 +32,7 @@ def GetArgs():
     argparser.add_argument('--seed',  type=int, help='Random seed')
     argparser.add_argument('--data_dist',  type=str, help='Data distribution type')
     argparser.add_argument('--dims',  nargs='+', type=int, help='Dimensions of the data')
-    argparser.add_argument('--dim', type=int, help='Dimensions of the data')
+    argparser.add_argument('--dim', type=int, choices=[1, 2, 3], help='Spatial dimension of the system (1D, 2D, or 3D)')
     argparser.add_argument('--device',  type=str, help='Device to use')
     argparser.add_argument('--cuda_visible',  type=int, help='CUDA visible device')
     argparser.add_argument('--using_wandb',  type=int, help='Use Weights & Biases logging')
@@ -101,7 +101,7 @@ def GetConfig(args):
         'gauss_std': 1,
         # 'dims': [1,1,1,1,1,1,1,1],
         # 'dims': [100,100,100,100,100,100,100,100],
-        'dim': 500,
+        'dim': 3,  # Spatial dimension (1D, 2D, or 3D)
         'device': 'gpu',
         'cuda_visible': 3,
         'using_wandb': 0,

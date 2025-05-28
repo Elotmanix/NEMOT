@@ -58,10 +58,15 @@ def CoulombCost(data):
     Calculate the Coulomb cost: sum_{i<j} 1/||r_i - r_j||
     Args:
         data: tensor of shape (batch_size, d, k) containing k d-dimensional points
+              where d must be 1, 2, or 3 (physical space dimension)
     Returns:
         tensor of shape (batch_size,) containing the Coulomb cost for each batch
     '''
     k = data.shape[2]
+    d = data.shape[1]
+    if d not in [1, 2, 3]:
+        raise ValueError(f"Spatial dimension must be 1, 2, or 3, got {d}")
+    
     costs = []
     eps = 1e-6  # Small constant to avoid division by zero
     
