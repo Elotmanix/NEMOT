@@ -25,10 +25,10 @@ def GetArgs():
     argparser.add_argument('--k',  type=int, help='Number of iterations')
     argparser.add_argument('--eps',  type=float, help='Epsilon value for regularisation')
     argparser.add_argument('--cost',  type=str, choices=['quad', 'quad_gw', 'ip_gw'], help='Cost function')
-    argparser.add_argument('--alg',  type=str, choices=['ne_mot', 'sinkhorn_mot', 'ne_mgw', 'sinkhorn_gw'],
+    argparser.add_argument('--alg',  type=str, choices=['ne_mot', 'sinkhorn_mot'],
                         help='Algorithm')
     argparser.add_argument('--hidden_dim',  type=int, help='Dimension of hidden layers')
-    argparser.add_argument('--mod',  type=str, choices=['mot', 'mgw'], help='Model type')
+    argparser.add_argument('--mod',  type=str, choices=['mot'], help='Model type')
     argparser.add_argument('--seed',  type=int, help='Random seed')
     argparser.add_argument('--data_dist',  type=str, help='Data distribution type')
     argparser.add_argument('--dims',  nargs='+', type=int, help='Dimensions of the data')
@@ -92,9 +92,9 @@ def GetConfig(args):
         'k': 3,
         'eps': 1,
         'cost': 'quad',  # options - quad, quad_gw, ip_gw
-        'alg': 'sinkhorn_mot',  # options - ne_mot, sinkhorn_mot,ne_mgw, sinkhorn_gw
+        'alg': 'sinkhorn_mot',  # options - ne_mot, sinkhorn_mot
         'hidden_dim': 32,
-        'mod': 'mot',  # options - mot, mgw
+        'mod': 'mot',  # options - mot
         'seed': 1,
         'data_dist': 'uniform',   # options - uniform, gauss
         'dataset': 'mnist',
@@ -141,7 +141,7 @@ def GetConfig(args):
         # 'gw_ns': [5000, 5000, 5000],
         'gw_same_n': 1,
         'gw_use_convex_eps': 1,
-        'A_mgw_opt': 'autograd',
+
 
         'save_results': True
     }

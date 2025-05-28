@@ -43,13 +43,12 @@ def gen_data(params, dataset=None):
                     #                        (params['n'], params['dims'][i])).astype(np.float32)
                 )
 
-        if params['alg'] not in ('ne_mgw','ne_mot'):
+        if params['alg'] != 'ne_mot':
             X = np.stack(X, axis=-1)
             MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
             return X, MU
         elif params['alg'] == 'ne_mot':
             X = torch.from_numpy(np.stack(X, axis=-1))
-        elif params['alg'] == 'ne_mgw':
             X = [torch.from_numpy(x) for x in X]
     return X
 
@@ -377,17 +376,9 @@ def gen_data_JAX(params):
     else:
         raise ValueError(f"Unknown data distribution: {params['data_dist']}")
     if params.dataset != 'mnist':
-        if params['alg'] not in ('ne_mgw', 'ne_mot'):
-            X = jnp.stack(X, axis=-1)
-            MU = [(1 / params['n']) * jnp.ones(params['n']) for _ in range(params['k'])]
-            return X, MU  # Return both X and MU (as JAX arrays)
-        elif params['alg'] == 'ne_mot':
-            X = jnp.stack(X, axis=-1)  # Directly stack as JAX array
-        elif params['alg'] == 'ne_mgw':
-            pass # X is already a list of JAX arrays.
-        else:
-            raise ValueError("Unknown value for params['alg']")
+        if params['alg'] != 'ne_mot':
 
+    X = jnp.stack(X, axis=-1)
     return X
 
 

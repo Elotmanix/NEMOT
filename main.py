@@ -1,6 +1,6 @@
 import torch
 import os
-from neural_estimation.models import MOT_NE_alg, MGW_NE_alg
+from neural_estimation.models import MOT_NE_alg
 from utils.config import PreprocessMeta
 from sinkhorn.sinkhorn_utils import MOT_Sinkhorn
 from utils.data_fns import gen_data
@@ -39,11 +39,7 @@ def main():
         MOT_agent.solve_sinkhorn()
         ## FOR DEBUG:
         # MOT_agent.calc_emot_from_phi()
-    elif params.alg == 'ne_mgw':
-        X = [x.to(device) for x in X]
-        MOT_agent = MGW_NE_alg(params, device, X)
-        MOT_agent.train_mgw_combined(X)
-        # MOT_agent.train_with_oracle(X)
+
 
     MOT_agent.save_results(X)
 

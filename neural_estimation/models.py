@@ -473,217 +473,23 @@ class MOT_NE_alg():
 
     def calc_pairwise_coupling_regularizer(self, phi, x):
         c = self.calc_cost(x)
-        exp_terms = [torch.exp((0.5*(phi[i] + phi[ (i+1)%self.k ].T) - c[i])/self.eps) for i in range(self.k)]
+        exp_terms = [torch.exp((0.5*(phi[i] + phi[(i+1)%self.k].T) - c[i])/self.eps) for i in range(self.k)]
         reg = 0
         for i in range(self.k):
-            ot_plan = self.calc_pairwise_plan(exp_terms, i, (i + 1) % self.k, verbose=False)
-            reg += (torch.sum(ot_plan)-1.0).abs()
+            P = self.calc_pairwise_plan(exp_terms, i)
+            reg += torch.sum(P * torch.log(P + 1e-10))
         return reg
 
-class MGW_NE_alg(MOT_NE_alg):
-    def __init__(self, params, device, X):
-        """
-        EMGW agent
-        built upon the MOT_NE_alg.
-
-        """
-        super().__init__(params, device)
-        self.initialize_alg(X)
-        # same optimizer for all matrices:
-
-    def initialize_alg(self,X):
-        """
-        Initialize the A matrices of the MGW problem
-        """
-        if self.params.A_mgw_opt == 'autograd':
-            # INIT As at models
-            if self.cost_graph == 'full':
-                # all (i,j) options
-                pass
-            elif self.cost_graph == 'circle':
-                # k  matrices
-                As = []
-                self.opt_A = []
-                for i in range(self.k):
-                    A = A_model(self.params.dims[i],self.params.dims[(i+1)%self.k])
-                    self.opt_A.append(torch.optim.Adam(A.parameters(), lr=1e-4))
-                    As.append(A.cuda())
-            elif self.cost_graph == 'tree':
-                # k-1 matrices
-                pass
-            self.A_matrices = As
+    def calc_pairwise_plan(self, L, i, verbose=False):
+        # Compute A: Product of matrices up to index i-1
+        if i > 0:
+            A = L[0]
+            for k in range(1, i):
+                A = A @ L[k]
         else:
-            # Doing first order optimization:
-            self.tolerance = 1e-4
-            self.max_iter = 100
-            self.K_const = 32
-            self.M = 1
-            self.L = max(64,32*32*(1/9+4/(45*self.params.dims[0]))/self.eps-64)
-            norms = [torch.norm(x, dim=1) for x in X]
-            self.C_1 = [-4*norms[i][:,None]*norms[(i+1)%self.k][None,:] for i in range(self.k)]
-            self.S1 = 0 # TD
-            self.A_matrices = [torch.ones(self.params.dims[i],self.params.dims[(i+1)%self.k]) * 1e-5 for i in range(self.k)]
-            self.C_matrices = [torch.ones(self.params.dims[i], self.params.dims[(i + 1) % self.k]) * 1e-5 for i in range(self.k)]
-
-    def train_with_oracle(self, X):
-        nemot_n_epochs = 5
-        x_b = MultiTensorDataset(X)
-        x_b = DataLoader(x_b, batch_size=self.batch_size, shuffle=True)
-
-        self.tot_loss = []
-        self.times = []
-
-        for iter in range(self.max_iter):
-
-            for epoch in range(nemot_n_epochs):
-                l = []
-                # perform an epoch
-                for i, data in enumerate(x_b):
-                    self.zero_grad_models()
-                    for k_ind in range(self.k):
-                        # k-margin loss
-                        phi = [self.models[i](data[i]) for i in
-                               range(self.k)]  # each phi[i] should have shape (b,1)
-                        e_term = self.calc_exp_term_mgw(phi, data)
-                        loss = -(sum(phi).mean() - self.eps * e_term)
-                        loss.backward()
-
-                        if self.params.clip_grads:
-                            torch.nn.utils.clip_grad_norm_(self.models[k_ind].parameters(),
-                                                           self.params.max_grad_norm)
-                        self.opt[k_ind].step()
-                        l.append(loss.item())
-                l = np.mean(l)
-                self.tot_loss.append(-l + self.eps)
-                print(f'iter: {iter}, finished NEMOT epoch {epoch}, loss: {-l + self.eps:.5f}')
-
-            # PERFORM A SINGLE A UPDATE:
-            # THIS IS LIMITED TO SIMPLIFIED PLANS!
-            gamma = iter / (4 * self.L)
-            tau = 2 / (iter + 2)
-            P = self.calc_plan(X)
-            print(f'iteration {iter}')
-            for i in range(len(self.A_matrices)):
-                A = self.A_matrices[i]
-                C = self.C_matrices[i]
-                grad = 64 * A - 32 * X[i].T @ P[i] @ X[i + 1]
-                print(f'grad_i norm is {torch.linalg.norm(grad)}')
-                B = torch.where(torch.abs(A - grad / (2 * self.L)) <= self.M / 2, A - grad / (2 * self.L),
-                                self.M / 2)
-                C = torch.where(torch.abs(C - grad * gamma) <= self.M / 2, A - grad * gamma, self.M / 2)
-                A = tau * C + (1 - tau) * B
-                self.A_matrices[i] = A
-                self.C_matrices[i] = C
-
-                    # if self.params.schedule:
-                    #     for sched in self.scheduler:
-                    #         sched.step()
-
-    def calc_exp_term_mgw(self,phi,x):
-        norms = [torch.norm(x_, dim=1) ** 2 for x_ in x]
-
-        if self.params.A_mgw_opt == 'autograd':
-            cost_list = [torch.diagonal(-4* norms[i][:,None]* norms[(i+1)%self.k][None,:] -32 * self.A_matrices[i]( (x[i], x[(i+1)%self.k])) ) for i in range(self.k)]
-        else:
-            cost_list = [torch.diagonal(
-                -4 * norms[i][:, None] * norms[(i + 1) % self.k][None, :] - 32 * x[i] @ self.A_matrices[i].cuda() @ x[
-                    (i + 1) % self.k].T) for i in range(self.k)]
-
-        reduced_phi = torch.sum(torch.concatenate(phi, axis=1), axis=1)
-        cost = sum(cost_list)
-        e_term = torch.exp((reduced_phi - cost) / self.eps)
-        return torch.mean(e_term)
-
-    def calc_plan_mgw(self, X):
-        # TD!!! plan calculation!!!
-        if self.cost_graph == 'circle':
-            phi = [self.models[i](X[i]) for i in range(self.k)]
-            c = self.calc_cost_mgw(X)
-            exp_terms = [torch.exp((0.5*(phi[i] + phi[ (i+1)%self.k ].T) - c[i])/self.eps) for i in range(self.k)]
-            ot_plan = []
-            for i in range(self.k):
-                P = self.calc_pairwise_plan(exp_terms,i, (i+1)%self.k )
-                if self.params.normalize_plan:
-                    P = P/torch.sum(P)
-                ot_plan.append(P)
-                if self.params.check_P_sum and self.params.using_wandb:
-                    print('h')
-                    wandb.log({f'ot_plan_{i}_sum': torch.sum(ot_plan[i]).item()})
-        else:
-            phi = [self.models[i](X[:, :, i]) for i in range(self.k)]
-            reshaped_term = []
-            for index, vec in enumerate(phi):
-                # Create a shape of length k with 1s except at the index position
-                shape = [1] * self.k
-                shape[index] = -1
-                # shape[-index] = -1
-                reshaped_term.append(vec.reshape(shape))
-            reshaped_term = sum(reshaped_term)
-            # reshaped_term = phi[0][None, :] + phi[1][:, None]
-            c = self.calc_exp_term(phi, X)
-            ot_plan = torch.exp((reshaped_term - c) / self.eps)
-        return ot_plan
-
-
-    def train_mgw_combined(self, X):
-        """
-        Training both A matrices and MGW via automatic differentiation
-        :param X:
-        :return:
-        """
-        x_b = MultiTensorDataset(X)
-        x_b = DataLoader(x_b, batch_size=self.batch_size, shuffle=True)
-        self.tot_loss = []
-        self.times = []
-        nemot_epochs = 3
-        for epoch in range(self.num_epochs):
-            A_opt_flag = epoch > 9 and epoch%nemot_epochs==0
-            t0 = timer()
-            l = []
-            if A_opt_flag:
-                # train A
-                l = []
-                for i, data in enumerate(x_b):
-                    self.zero_grad_models()
-                    for k_ind in range(self.k):
-                        phi = [self.models[i](data[i]) for i in
-                               range(self.k)]  # each phi[i] should have shape (b,1)
-                        e_term = self.calc_exp_term_mgw(phi, data)
-                        loss_ = sum(phi).mean() - self.eps * e_term
-                        frob_norms = 32*sum([model.A.norm(p='fro')**2 for model in self.A_matrices])
-                        loss = loss_ + frob_norms
-                        loss.backward()
-
-                        # if self.params.clip_grads:
-                        #     torch.nn.utils.clip_grad_norm_(self.A_matrices[k_ind].parameters(),
-                        #                                    self.params.max_grad_norm)
-                        self.opt_A[k_ind].step()
-                    l.append(loss.item())
-                self.tot_loss.append(np.mean(l) + self.eps)
-            else:
-                # train NEMOT
-                for i, data in enumerate(x_b):
-                    self.zero_grad_models()
-                    for k_ind in range(self.k):
-                        # k-margin loss
-                        phi = [self.models[i](data[i]) for i in
-                               range(self.k)]  # each phi[i] should have shape (b,1)
-                        e_term = self.calc_exp_term_mgw(phi, data)
-                        loss = -(sum(phi).mean() - self.eps * e_term)
-                        loss.backward()
-
-                        if self.params.clip_grads:
-                            torch.nn.utils.clip_grad_norm_(self.models[k_ind].parameters(),
-                                                           self.params.max_grad_norm)
-                        self.opt[k_ind].step()
-                        l.append(loss.item())
-            epoch_time = timer() - t0
-            l = np.mean(l)
-            self.times.append(epoch_time)
-            if A_opt_flag:
-                print(f'finished epoch {epoch}, A opt loss: {l + self.eps:.5f}')
-            else:
-                print(f'finished epoch {epoch}, loss: {-l + self.eps:.5f}')
+            # Use identity matrix if no matrices before index i
+            size = L[i].shape[0]
+            A = torch.eye(size, dtype=L[i].dtype, device=L[i].device)
 
         #
 
