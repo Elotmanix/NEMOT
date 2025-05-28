@@ -19,8 +19,6 @@ class MOT_Sinkhorn():
         # self.n = params.n
         self.ns = [params.n]*self.k
         self.tol = 1e-10
-        if params.cost_graph == 'circle':
-            self.tol = 1e-5
         self.params = params
         # params['cost_graph'] = 'full'
         self.calc_kernel(params['cost_graph'], X)
@@ -36,37 +34,13 @@ class MOT_Sinkhorn():
         Kernel shape depends on cost graphical structure
         """
         if self.params['alg'] == 'sinkhorn_mot':
-            if cost_graph == 'circle':
-                # calculate consecutive couples, Each Ki is a matrix Ki = exp(-Ci/eps)
-                # Ci = cost(x_i,x_{i+1}), therefore has a shape (n x n)
-                # for i in range(self.k):
-                C = QuadCost(data=X, mod='circle')
-                self.C = C
-                K = [np.exp(-c/self.eps) for c in C]
-
-
-            elif cost_graph == 'full':
+            if cost_graph == 'full':
                 C = QuadCost(data=X, mod='full')
                 self.cost = C
                 K = np.exp(-C/self.eps)
 
-            elif cost_graph == 'tree':
-                # TD
-                K=0
-
         elif self.params['alg'] == 'sinkhorn_gw':
-            if cost_graph == 'circle':
-                #TD!!!
-                # calculate consecutive couples, Each Ki is a matrix Ki = exp(-Ci/eps)
-                # Ci = cost(x_i,x_{i+1}), therefore has a shape (n x n)
-                C = QuadCost(data=X, mod='circle')
-                K = [np.exp(-c / self.eps) for c in C]
-
-            elif cost_graph == 'tree':
-                # TD
-                K = 0
-
-            elif cost_graph == 'full':
+            if cost_graph == 'full':
                 C = QuadCost(data=X, mod='full')
                 self.cost = C
                 K = np.exp(-C / self.eps)
@@ -163,7 +137,7 @@ class MOT_Sinkhorn():
 
         n = self.n
         reg_cost = self.kernel
-        reg_loop_cost = self.kernel[self.k-1]
+        reg_loop_cost = self.kernel
 
         """ Compute transition matrices 1 --> margidx, margidx --> k """
         trans1 = np.eye(n)
@@ -174,12 +148,12 @@ class MOT_Sinkhorn():
         for i in range(margidx):
             currcolscaling = np.diag(np.exp(eta * p[i]))
             trans1 = trans1 @ currcolscaling
-            trans1 = trans1 @ reg_cost[i]
+            trans1 = trans1 @ reg_cost
 
         # transk[i,j] is the mass of the cost of transitioning from i at time margidx to j at time K
         # include the potentials in (margidx,k]
         for i in range(margidx+1, self.k):
-            transk = transk @ reg_cost[i-1]
+            transk = transk @ reg_cost
             currcolscaling = np.diag(np.exp(eta * p[i]))
             transk = transk @ currcolscaling
 
@@ -214,7 +188,7 @@ class MOT_Sinkhorn():
 
         n = self.n
         reg_cost = self.kernel
-        reg_loop_cost = self.kernel[self.k-1]
+        reg_loop_cost = self.kernel
 
         """ Compute transition matrices 1 --> margidx, margidx --> k """
         trans1 = np.eye(n)
@@ -225,12 +199,12 @@ class MOT_Sinkhorn():
         for i in range(margidx):
             currcolscaling = np.diag(np.exp(eta * p[i]))
             trans1 = trans1 @ currcolscaling
-            trans1 = trans1 @ reg_cost[i]
+            trans1 = trans1 @ reg_cost
 
         # transk[i,j] is the mass of the cost of transitioning from i at time margidx to j at time K
         # include the potentials in (margidx,k]
         for i in range(margidx+1, self.k):
-            transk = transk @ reg_cost[i-1]
+            transk = transk @ reg_cost
             currcolscaling = np.diag(np.exp(eta * p[i]))
             transk = transk @ currcolscaling
 
@@ -337,52 +311,21 @@ class MOT_Sinkhorn():
         :param training:
         :return:
         """
-        if self.params.cost_graph == 'circle':
-            # Unregularized OT cost for Neural MOT plan.
-            if training:
-                return 0
-            P = self.calc_plan(training=False)
-            cost = sum([np.sum(c*p) for (c, p) in zip(self.C, P)])
-            return cost
         # FULL ENTROPIC OT COST
         P = self.calc_plan(training)
         KL = sum([calc_ent(mu) for mu in self.mus]) - calc_ent(P)
         return np.sum(P*self.cost) + self.eps*KL
 
     def calc_plan(self, training):
-        if self.params.cost_graph == 'circle':
-            P = self.circle_plan()
+        P = self.marginalize_naive(0, outplan=True)
+        if training:
             return P
-        else:
-            P = self.marginalize_naive(0, outplan=True)
-            if training:
-                return P
-            for index in  range(1,len(self.rankone)):
-                if index == 1:
-                    rankone = np.tensordot(self.rankone[index-1], self.rankone[index], axes=0)
-                else:
-                    rankone = np.tensordot(rankone, self.rankone[index], axes=0)
-            return P + rankone
-        #     #### OLD:
-        #     # Create a shape of length k with 1s except at the index position
-        #     shape = [1] * self.k
-        #     shape[index] = -1
-        #     reshapred_rankone.append(self.rankone[index].reshape(shape))
-        #     P = P * (vec.reshape(shape))
-        # R = sum(reshapred_rankone)
-        # return P*np.exp(-self.kernel/self.eps)+R
-
-    def circle_plan(self):
-        otmaps = []
-        for i in range(0, self.k):
-            print(f'Extracting map {i}')
-            otmaps.append(self.get_pairwise_marginal(self.eta, self.phi, self.rankone, i, (i + 1)%self.k ))
-            print('Map extracted')
-        return otmaps
-
-
-    def get_pairwise_marginal_(self, i1, i2):
-        pcopy = copy.deepcopy(self.phi)
+        for index in  range(1,len(self.rankone)):
+            if index == 1:
+                rankone = np.tensordot(self.rankone[index-1], self.rankone[index], axes=0)
+            else:
+                rankone = np.tensordot(rankone, self.rankone[index], axes=0)
+        return P + rankone
         marg2 = np.zeros((self.ns[i1],self.ns[i2]))
         # print(np.sum(m1))
         # print(np.prod([np.sum(rankone[i]) for i in range(self.k)]))

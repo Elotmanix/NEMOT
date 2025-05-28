@@ -50,11 +50,6 @@ class MOT_NE_alg():
         if params.schedule:
             self.scheduler = [torch.optim.lr_scheduler.StepLR(opt, step_size=params.schedule_step, gamma=params.schedule_gamma) for opt in self.opt]
 
-        if self.params.cost_graph == 'tree':
-            self.tree_root = create_tree(self.params)
-        else:
-            self.tree_root = None
-
         self.device = device
         self.cost_graph = params['cost_graph']
         self.using_wandb = params['using_wandb']
@@ -107,7 +102,7 @@ class MOT_NE_alg():
             print(f'finished epoch {epoch}, loss={-l+ self.eps:.5f}, took {epoch_time:.2f} seconds')
 
             print_debug = True
-            if epoch%10==0 and print_debug and self.params.cost_graph != 'full' and self.params.calc_ot_cost and self.params.cost_graph != 'tree':
+            if epoch%10==0 and print_debug and self.params.calc_ot_cost:
                 P = self.calc_plan(X)
                 ot_cost = self.calc_ot_cost(P,X)
                 print(f'ot_cost {ot_cost}')
@@ -132,7 +127,7 @@ class MOT_NE_alg():
             'params': self.params,
             # 'plan': plan,
         }
-        if self.params.cost_graph != 'full' and self.params.calc_ot_cost and self.params.cost_graph != 'tree':
+        if self.params.calc_ot_cost:
             plan = self.calc_plan(X)
             ###
             ot_cost = self.calc_ot_cost(plan,X)
@@ -192,72 +187,18 @@ class MOT_NE_alg():
                     # cost = cost/x.shape[1]
                     cost = cost/cost.max()
                 e_term = torch.exp((reduced_phi - cost.sum(axis=(1,2)))/self.eps)
-            elif self.cost_graph == 'circle':
-                shifted_x = torch.roll(x, shifts=1, dims=-1)
-                diffs = x - shifted_x
-                cost = torch.norm(diffs, dim=1) ** 2
-                e_term = torch.exp((reduced_phi - cost.sum(axis=(-1))) / self.eps)
             return e_term.mean()
 
         # COMBINATORIAL IMPLEMENTATION
         c = self.calc_cost(x)
-        if self.cost_graph == 'circle':
-            n = phi[0].shape[0]
-            e_term = torch.eye(n).to(self.device)
-            for i in range(self.k):
-                L = torch.exp((0.5*(phi[i] + phi[ (i+1)%self.k ].T) - c[i])/self.eps)
-                e_term = (e_term @ L)*(1/n)
-            return torch.trace(e_term)
-            # # calc mapping:
-            # reshaped_term = []
-            # reshaped_c = []
-            # for index, vec in enumerate(phi):
-            #     # Create a shape of length k with 1s except at the index position
-            #     shape = [1] * self.k
-            #     shape[index] = -1
-            #     reshaped_c.append(c[index].reshape(shape))
-            #     reshaped_term.append(vec.reshape(shape))
-            # reshaped_term = sum(reshaped_term)
-            # c = sum(reshaped_c)
-        elif self.cost_graph == 'full':
-            reshaped_term = []
-            for index, vec in enumerate(phi):
-                # Create a shape of length k with 1s except at the index position
-                shape = [1] * self.k
-                shape[index] = -1
-                # shape[-index] = -1
-                reshaped_term.append(vec.reshape(shape))
-            reshaped_term = sum(reshaped_term)
-            # reshaped_term = phi[0][None, :] + phi[1][:, None]
-            return torch.mean(torch.exp((reshaped_term-c)/self.eps))
-        elif self.cost_graph == 'tree':
-            n = phi[0].shape[0]
-            e_term = self.calc_exp_term_tree(n,phi,c)
-            return e_term
-
-
-
-    def calc_exp_term_tree(self, n, phi, c):
-        """
-        We traverse the tree and aggregate the multiplications.
-        """
-
-        def traverse_and_calculate(node):
-            # Aggregate children node calculation into V
-            V = torch.ones(size=(n,1)).cuda()
-            for child in node.children:
-                V = V*traverse_and_calculate(child)
-
-            # If we're at the root then we need to calculate
-            if node.is_root_flag:
-                # there is a vector and the beginning
-                L = 1 / n * torch.exp((phi[node.index] ) / self.eps).t()
-                return L @ V
-
-            ones = torch.ones(size=(n, 1)).cuda()
-            L = 1/n*torch.exp( ( ones@phi[node.index].t() - c[node.index] )/self.eps )
-
-            return L @ V
+        reshaped_term = []
+        for index, vec in enumerate(phi):
+            # Create a shape of length k with 1s except at the index position
+            shape = [1] * self.k
+            shape[index] = -1
+            reshaped_term.append(vec.reshape(shape))
+        reshaped_term = sum(reshaped_term)
+        return torch.mean(torch.exp((reshaped_term-c)/self.eps))
 
         # Traverse the tree starting from the root and calculate the matrices
         return traverse_and_calculate(self.tree_root).squeeze()
@@ -270,10 +211,7 @@ class MOT_NE_alg():
         :return:
         """
         if self.cost == 'quad':
-            if self.cost_graph == 'circle' and self.params.euler == 1:
-                cost = QuadCost(data, mod='euler')
-            else:
-                cost = QuadCost(data, mod=self.cost_graph, root=self.tree_root)
+            cost = QuadCost(data)
         elif self.cost == 'quad_gw':
             # IMPLEMENT - cost = QuadCostGW(data, self.matrices)
             pass
@@ -295,149 +233,21 @@ class MOT_NE_alg():
             model.eval()
 
     def calc_plan(self, X):
-        if self.cost_graph == 'circle':
-            phi = [self.models[i](X[:, :, i]) for i in range(self.k)]
-            c = self.calc_cost(X)
-            exp_terms = [torch.exp((0.5*(phi[i] + phi[ (i+1)%self.k ].T) - c[i])/self.eps) for i in range(self.k)]
-            ot_plan = []
-            for i in range(self.k):
-                P = self.calc_pairwise_plan(exp_terms,i, (i+1)%self.k )
-                if self.params.normalize_plan:
-                    P = P/torch.sum(P)
-                ot_plan.append(P)
-                if self.params.check_P_sum and self.params.using_wandb:
-                    print('h')
-                    wandb.log({f'ot_plan_{i}_sum': torch.sum(ot_plan[i]).item()})
-        else:
-            phi = [self.models[i](X[:, :, i]) for i in range(self.k)]
-            reshaped_term = []
-            for index, vec in enumerate(phi):
-                # Create a shape of length k with 1s except at the index position
-                shape = [1] * self.k
-                shape[index] = -1
-                # shape[-index] = -1
-                reshaped_term.append(vec.reshape(shape))
-            reshaped_term = sum(reshaped_term)
-            # reshaped_term = phi[0][None, :] + phi[1][:, None]
-            c = self.calc_exp_term(phi, X)
-            ot_plan = torch.exp((reshaped_term - c) / self.eps)
+        phi = [self.models[i](X[:, :, i]) for i in range(self.k)]
+        reshaped_term = []
+        for index, vec in enumerate(phi):
+            # Create a shape of length k with 1s except at the index position
+            shape = [1] * self.k
+            shape[index] = -1
+            reshaped_term.append(vec.reshape(shape))
+        reshaped_term = sum(reshaped_term)
+        c = self.calc_exp_term(phi, X)
+        ot_plan = torch.exp((reshaped_term - c) / self.eps)
         return ot_plan
 
-    def calc_pairwise_plan_old(self, L,i,j):
-        '''
-        calculate the pairwise plan from margin i to margin j
-        TD (from pic) - start from (i,i+1) and then (k,1) and then general (i,j)?
-        Pi_{i,j} = \prod_{l=i}^{j-1}L_{l,l+1} \odot (\prod_{l=1}^{i-1}L_{l,l+1}) @ (\prod_{l=j+1}^{k}L_{l,l+1}).T
-        currently implemented for same number of samples.
-        '''
-        k = len(L)
-        n = L[0].shape[0]
 
-        if i == 0:
-            A = torch.eye(L[0].shape[0]).to(self.device)
-            B = torch.eye(L[0].shape[0]).to(self.device)
 
-            for l in range(k):
-                if l<j:
-                    A = A@L[l]
-                else:
-                    B = B@L[l]
-            C = A * B
-            print(f'adjacent with zero, P adds up to {torch.sum(C)}')
-            return C/(n**k)
-        elif j == (i+1)%k:
-            if j == i+1:
-                # two adjacent idx, i !=0, j=i+1
-                A = torch.eye(n).to(self.device)
-                B = torch.eye(n).to(self.device)
-                for l in range(k):
-                    if l <= i:
-                        A = A @ L[l]
-                    else:
-                        B = B @ L[l]
-                C = (A.T * B.T)
-                print(f'adjacent, P adds up to {torch.sum(C)/(n**k)}')
-                return C/(n**k)
-            else:
-                # cycle case or
-                # two adjacent idx, i !=0, j=i+1
-                A = torch.eye(n).to(self.device)
-                B = torch.eye(n).to(self.device)
-                for l in range(k):
-                    if l <= i:
-                        A = A @ L[l]
-                    else:
-                        B = B @ L[l]
-                C = (A * B.T)
-                print(f'adjacent, P adds up to {torch.sum(C) / (L[0].shape[0] ** k)}')
-                return C/(n**k)
-        else:
-            # GENERAL CASE
-            return
 
-    def calc_pairwise_plan_(self, L,i,j,verbose=True):
-        ### NEW IMPLEMENTATION
-        '''
-        calculate the pairwise plan from margin i to margin j
-        TD (from pic) - start from (i,i+1) and then (k,1) and then general (i,j)?
-        Pi_{i,j} = \prod_{l=i}^{j-1}L_{l,l+1} \odot (\prod_{l=1}^{i-1}L_{l,l+1}) @ (\prod_{l=j+1}^{k}L_{l,l+1}).T
-        currently implemented for same number of samples.
-        '''
-        k = len(L)
-        n = L[0].shape[0]
-
-        if i == 0:
-            A = torch.eye(L[0].shape[0]).to(self.device)
-            B = torch.eye(L[0].shape[0]).to(self.device)
-
-            for l in range(k):
-                if l<j:
-                    A = A@L[l]
-                    # A = A@L[l]/n
-                else:
-                    B = B@L[l]
-                    # B = B @ L[l] / n
-            C = A.T*B.T
-            if verbose:
-                print(f'adjacent, P adds up to {torch.sum(C)}')
-            return C
-        elif j == (i+1)%k:
-            if j == i+1:
-                # two adjacent idx, i !=0, j=i+1
-                A = torch.eye(n).to(self.device)
-                B = torch.eye(n).to(self.device)
-                for l in range(k):
-                    if l <= i:
-                        A = A @ L[l]
-                        # A = A @ L[l]/n
-                        # A = A @ L[l]/(n*L[l].sum(0))
-                    else:
-                        B = B @ L[l]
-                        # B = B @ L[l]/n
-                        # B = B @ L[l]/(n*L[l].sum(0))
-                C = (A.T * B.T)
-                if verbose:
-                    print(f'adjacent, P adds up to {torch.sum(C)}')
-                return C
-            else:
-                # cycle case or
-                # two adjacent idx, i !=0, j=i+1
-                A = torch.eye(n).to(self.device)
-                B = torch.eye(n).to(self.device)
-                for l in range(k):
-                    if l <= i:
-                        A = A @ L[l]
-                        # A = A @ L[l]/n
-                    else:
-                        B = B @ L[l]
-                        # B = B @ L[l] / n
-                C = (A.T * B.T)
-                if verbose:
-                    print(f'adjacent, P adds up to {torch.sum(C)}')
-                return C
-        else:
-            # GENERAL CASE
-            return
 
     def calc_pairwise_plan(self, L, i, verbose=False):
         # Compute A: Product of matrices up to index i-1
