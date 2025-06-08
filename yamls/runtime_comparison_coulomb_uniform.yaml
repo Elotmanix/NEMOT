@@ -1,0 +1,40 @@
+program: main.py
+method: grid
+metric:
+  name: _runtime  # Wandb automatically logs total execution time for each run
+  goal: minimize
+parameters:
+  experiment:
+    values: ['runtime_comparison_coulomb_uniform']
+  alg:
+    values: ['ne_mot', 'sinkhorn_mot']
+  cost:
+    values: ['coulomb'] # Explicitly set, though it's the default
+  data_dist:
+    values: ['uniform']
+  dim:
+    values: [1, 2, 3]   # Test across allowed dimensions
+  k:
+    values: [3, 4]     # Number of marginals
+  n:
+    values: [100, 500, 1000] # Sample sizes to see scaling
+  eps:
+    values: [0.1, 1.0]   # Regularization parameters
+  
+  # NEMOT specific parameters
+  lr:
+    values: [0.0001, 0.0005]
+  epochs:
+    values: [25, 50] # Number of epochs for NEMOT
+  batch_size:
+    values: [32, 64]
+
+  # Common parameters
+  seed:
+    values: [1, 2, 3] # Run a few seeds for robustness
+  using_wandb:
+    values: [1]
+  wandb_project_name:
+    values: ["NMOT_Runtime_Comparison"] # Project name in Wandb
+  run:
+    values: ["runtime_sweep"]
