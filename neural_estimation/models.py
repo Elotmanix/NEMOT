@@ -90,9 +90,7 @@ class MOT_NE_alg():
 
             print_debug = True
             if epoch%10==0 and print_debug and self.params.calc_ot_cost:
-                P = self.calc_plan(X)
-                ot_cost = self.calc_ot_cost(P,X)
-                print(f'ot_cost {ot_cost}')
+                pass
 
             if self.params.schedule:
                 for sched in self.scheduler:
