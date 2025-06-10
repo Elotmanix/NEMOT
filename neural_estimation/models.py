@@ -5,24 +5,11 @@ import wandb
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 from timeit import default_timer as timer
-from utils.data_fns import QuadCost, QuadCostGW, MultiTensorDataset, rotate, translate, perspective_warp
-from utils.tree_fns import create_tree
+from utils.data_fns import MultiTensorDataset, rotate, translate, perspective_warp
+
 import pickle
 import os
-import jax
-import jax.numpy as jnp
-import jax.random as jr
-from jax import grad, value_and_grad
-import optax
-from functools import partial
-from jax.tree_util import tree_map
-import pickle
-import os
-from timeit import default_timer as timer
-from jax import random
-from jax.nn import relu
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
+
 
 
 class MOT_NE_alg():
@@ -555,7 +542,20 @@ class A_model(nn.Module):
 
 
 
-class MOT_NE_alg_JAX:
+import jax
+import jax.numpy as jnp
+import jax.random as jr
+from jax import grad, value_and_grad
+import optax
+from functools import partial
+from jax.tree_util import tree_map
+from jax import random
+from jax.nn import relu
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+
+
+class MOT_NE_alg_JAX():
     def __init__(self, params, device=None):  # Device is not explicitly used in JAX, it manages devices
         self.params = params
         self.k = params['k']
@@ -597,8 +597,6 @@ class MOT_NE_alg_JAX:
         else:
             self.schedulers = None
 
-
-        self.tree_root = create_tree(self.params) if self.params.get('cost_graph') == 'tree' else None
 
     def calc_exp_term(self, phis, x):
       reduced_phi = sum(phis)

@@ -3,8 +3,8 @@ import ssl
 import numpy as np  # Ensure NumPy is imported
 import torch
 from torch.utils.data import Dataset, DataLoader
-import jax.numpy as jnp
-import jax.random as jr
+# import jax.numpy as jnp
+# import jax.random as jr
 from torchvision import datasets, transforms
 from PIL import Image
 import torchvision.transforms.functional as TF
@@ -242,6 +242,8 @@ def gen_mnist_tensor(params):
     return mnist_tensor
 
 def gen_data_JAX(params):
+    import jax.numpy as jnp
+    import jax.random as jr
     key = jr.PRNGKey(params.get('seed', 0))  # Use a seed for reproducibility, default to 0
 
     if params.dataset == 'mnist':
