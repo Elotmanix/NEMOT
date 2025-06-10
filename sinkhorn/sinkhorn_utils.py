@@ -1,5 +1,5 @@
 import numpy as np
-from utils.data_fns import QuadCost, calc_ent
+from utils.data_fns import CoulombCost, calc_ent
 import copy
 import random
 from timeit import default_timer as timer
@@ -35,13 +35,13 @@ class MOT_Sinkhorn():
         """
         if self.params['alg'] == 'sinkhorn_mot':
             if cost_graph == 'full':
-                C = QuadCost(data=X, mod='full')
+                C = CoulombCost(data=X, mod='full')
                 self.cost = C
                 K = np.exp(-C/self.eps)
 
         elif self.params['alg'] == 'sinkhorn_gw':
             if cost_graph == 'full':
-                C = QuadCost(data=X, mod='full')
+                C = CoulombCost(data=X, mod='full')
                 self.cost = C
                 K = np.exp(-C / self.eps)
 
