@@ -1,0 +1,100 @@
+2025-06-10 11:35:51,404 INFO    StreamThr :92 [internal.py:wandb_internal():83] W&B internal server running at pid: 92, started at: 2025-06-10 11:35:51.403530
+2025-06-10 11:35:51,409 INFO    WriterThread:92 [datastore.py:open_for_write():87] open: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\run-pukhjgij.wandb
+2025-06-10 11:35:52,009 INFO    SenderThread:92 [dir_watcher.py:__init__():211] watching files in: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files
+2025-06-10 11:35:52,010 INFO    SenderThread:92 [sender.py:_start_run_threads():1134] run started: pukhjgij with start time 1749551751.40153
+2025-06-10 11:35:52,042 INFO    HandlerThread:92 [system_monitor.py:start():187] Starting system monitor
+2025-06-10 11:35:52,042 INFO    SystemMonitor:92 [system_monitor.py:_start():151] Starting system asset monitoring threads
+2025-06-10 11:35:52,043 INFO    HandlerThread:92 [system_monitor.py:probe():207] Collecting system info
+2025-06-10 11:35:52,047 INFO    SystemMonitor:92 [interfaces.py:start():186] Started cpu monitoring
+2025-06-10 11:35:52,050 INFO    SystemMonitor:92 [interfaces.py:start():186] Started disk monitoring
+2025-06-10 11:35:52,058 INFO    SystemMonitor:92 [interfaces.py:start():186] Started memory monitoring
+2025-06-10 11:35:52,072 INFO    SystemMonitor:92 [interfaces.py:start():186] Started network monitoring
+2025-06-10 11:35:52,193 INFO    HandlerThread:92 [system_monitor.py:probe():217] Finished collecting system info
+2025-06-10 11:35:52,193 INFO    HandlerThread:92 [system_monitor.py:probe():220] Publishing system info
+2025-06-10 11:35:52,194 INFO    HandlerThread:92 [system_monitor.py:probe():222] Finished publishing system info
+2025-06-10 11:35:52,221 INFO    SenderThread:92 [sender.py:_save_file():1403] saving file wandb-metadata.json with policy now
+2025-06-10 11:35:53,017 INFO    Thread-16 :92 [dir_watcher.py:_on_file_created():272] file/dir created: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\requirements.txt
+2025-06-10 11:35:53,019 INFO    wandb-upload_0:92 [upload_job.py:push():130] Uploaded file C:\Users\dell\AppData\Local\Temp\tmprhzk2jmbwandb\sfbp7un1-wandb-metadata.json
+2025-06-10 11:35:53,020 INFO    Thread-16 :92 [dir_watcher.py:_on_file_created():272] file/dir created: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\wandb-metadata.json
+2025-06-10 11:35:53,033 INFO    SenderThread:92 [sender.py:send_exit():554] handling exit code: 1
+2025-06-10 11:35:53,033 INFO    SenderThread:92 [sender.py:send_exit():556] handling runtime: 1
+2025-06-10 11:35:53,034 INFO    SenderThread:92 [sender.py:_save_file():1403] saving file wandb-summary.json with policy end
+2025-06-10 11:35:53,036 INFO    SenderThread:92 [sender.py:send_exit():562] send defer
+2025-06-10 11:35:53,037 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 0
+2025-06-10 11:35:53,037 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 0
+2025-06-10 11:35:53,038 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 1
+2025-06-10 11:35:53,038 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 1
+2025-06-10 11:35:53,039 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 1
+2025-06-10 11:35:53,039 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 2
+2025-06-10 11:35:53,039 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 2
+2025-06-10 11:35:53,039 INFO    HandlerThread:92 [system_monitor.py:finish():196] Stopping system monitor
+2025-06-10 11:35:53,042 INFO    HandlerThread:92 [interfaces.py:finish():198] Joined cpu monitor
+2025-06-10 11:35:53,043 INFO    HandlerThread:92 [interfaces.py:finish():198] Joined disk monitor
+2025-06-10 11:35:53,043 INFO    HandlerThread:92 [interfaces.py:finish():198] Joined memory monitor
+2025-06-10 11:35:53,043 INFO    HandlerThread:92 [interfaces.py:finish():198] Joined network monitor
+2025-06-10 11:35:53,045 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 2
+2025-06-10 11:35:53,045 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 3
+2025-06-10 11:35:53,047 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 3
+2025-06-10 11:35:53,047 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 3
+2025-06-10 11:35:53,048 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 4
+2025-06-10 11:35:53,048 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 4
+2025-06-10 11:35:53,049 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 4
+2025-06-10 11:35:53,049 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 5
+2025-06-10 11:35:53,049 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 5
+2025-06-10 11:35:53,051 INFO    SenderThread:92 [sender.py:_save_file():1403] saving file wandb-summary.json with policy end
+2025-06-10 11:35:53,053 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 5
+2025-06-10 11:35:53,053 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 6
+2025-06-10 11:35:53,053 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 6
+2025-06-10 11:35:53,054 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 6
+2025-06-10 11:35:53,341 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 7
+2025-06-10 11:35:53,342 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 7
+2025-06-10 11:35:53,342 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 7
+2025-06-10 11:35:54,030 INFO    Thread-16 :92 [dir_watcher.py:_on_file_modified():289] file/dir modified: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\config.yaml
+2025-06-10 11:35:54,031 INFO    Thread-16 :92 [dir_watcher.py:_on_file_created():272] file/dir created: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\wandb-summary.json
+2025-06-10 11:35:54,032 INFO    Thread-16 :92 [dir_watcher.py:_on_file_created():272] file/dir created: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\output.log
+2025-06-10 11:35:55,039 INFO    Thread-16 :92 [dir_watcher.py:_on_file_modified():289] file/dir modified: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\output.log
+2025-06-10 11:35:57,040 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 8
+2025-06-10 11:35:57,040 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 8
+2025-06-10 11:35:57,043 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 8
+2025-06-10 11:35:57,043 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 9
+2025-06-10 11:35:57,043 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 9
+2025-06-10 11:35:57,044 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 9
+2025-06-10 11:35:57,044 INFO    SenderThread:92 [dir_watcher.py:finish():359] shutting down directory watcher
+2025-06-10 11:35:57,049 INFO    SenderThread:92 [dir_watcher.py:_on_file_modified():289] file/dir modified: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\output.log
+2025-06-10 11:35:57,049 INFO    SenderThread:92 [dir_watcher.py:finish():389] scan: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files
+2025-06-10 11:35:57,050 INFO    SenderThread:92 [dir_watcher.py:finish():403] scan save: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\config.yaml config.yaml
+2025-06-10 11:35:57,051 INFO    SenderThread:92 [dir_watcher.py:finish():403] scan save: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\output.log output.log
+2025-06-10 11:35:57,053 INFO    SenderThread:92 [dir_watcher.py:finish():403] scan save: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\requirements.txt requirements.txt
+2025-06-10 11:35:57,055 INFO    SenderThread:92 [dir_watcher.py:finish():403] scan save: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\wandb-metadata.json wandb-metadata.json
+2025-06-10 11:35:57,055 INFO    SenderThread:92 [dir_watcher.py:finish():403] scan save: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\wandb-summary.json wandb-summary.json
+2025-06-10 11:35:57,060 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 10
+2025-06-10 11:35:57,061 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 10
+2025-06-10 11:35:57,061 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 10
+2025-06-10 11:35:57,061 INFO    SenderThread:92 [file_pusher.py:finish():169] shutting down file pusher
+2025-06-10 11:35:57,634 INFO    wandb-upload_0:92 [upload_job.py:push():130] Uploaded file C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\config.yaml
+2025-06-10 11:35:58,031 INFO    wandb-upload_1:92 [upload_job.py:push():130] Uploaded file C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\output.log
+2025-06-10 11:35:58,031 INFO    wandb-upload_2:92 [upload_job.py:push():130] Uploaded file C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\requirements.txt
+2025-06-10 11:35:58,033 INFO    wandb-upload_3:92 [upload_job.py:push():130] Uploaded file C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\files\wandb-summary.json
+2025-06-10 11:35:58,248 INFO    Thread-15 (_thread_body):92 [sender.py:transition_state():582] send defer: 11
+2025-06-10 11:35:58,248 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 11
+2025-06-10 11:35:58,249 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 11
+2025-06-10 11:35:58,250 INFO    SenderThread:92 [file_pusher.py:join():175] waiting for file pusher
+2025-06-10 11:35:58,251 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 12
+2025-06-10 11:35:58,251 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 12
+2025-06-10 11:35:58,252 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 12
+2025-06-10 11:35:58,252 INFO    SenderThread:92 [file_stream.py:finish():601] file stream finish called
+2025-06-10 11:35:58,753 INFO    SenderThread:92 [file_stream.py:finish():605] file stream finish is done
+2025-06-10 11:35:58,753 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 13
+2025-06-10 11:35:58,754 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 13
+2025-06-10 11:35:58,754 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 13
+2025-06-10 11:35:58,754 INFO    SenderThread:92 [sender.py:transition_state():582] send defer: 14
+2025-06-10 11:35:58,755 INFO    HandlerThread:92 [handler.py:handle_request_defer():188] handle defer: 14
+2025-06-10 11:35:58,756 INFO    SenderThread:92 [sender.py:send_request_defer():578] handle sender defer: 14
+2025-06-10 11:35:58,763 INFO    MainThread:92 [wandb_run.py:_footer_history_summary_info():4188] rendering history
+2025-06-10 11:35:58,763 INFO    MainThread:92 [wandb_run.py:_footer_history_summary_info():4220] rendering summary
+2025-06-10 11:35:58,763 INFO    MainThread:92 [wandb_run.py:_footer_sync_info():4149] logging synced files
+2025-06-10 11:35:58,768 INFO    HandlerThread:92 [handler.py:finish():897] shutting down handler
+2025-06-10 11:35:59,764 INFO    WriterThread:92 [datastore.py:close():296] close: C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_113551-pukhjgij\run-pukhjgij.wandb
+2025-06-10 11:35:59,766 INFO    SenderThread:92 [sender.py:finish():1587] shutting down sender
+2025-06-10 11:35:59,767 INFO    SenderThread:92 [file_pusher.py:finish():169] shutting down file pusher
+2025-06-10 11:35:59,767 INFO    SenderThread:92 [file_pusher.py:join():175] waiting for file pusher

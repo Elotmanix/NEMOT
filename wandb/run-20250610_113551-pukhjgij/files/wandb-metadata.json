@@ -1,0 +1,51 @@
+{
+    "os": "Windows-10-10.0.19045-SP0",
+    "python": "CPython 3.12.0",
+    "heartbeatAt": "2025-06-10T10:35:52.093501",
+    "startedAt": "2025-06-10T10:35:51.334330",
+    "docker": null,
+    "args": [
+        "service",
+        "--debug",
+        "--port-filename",
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\tmpu8wxbbpn\\port-18140.txt",
+        "--pid",
+        "18140"
+    ],
+    "state": "running",
+    "program": "C:\\Users\\dell\\OneDrive\\Bureau\\NEMOT\\NMOT\\main.py",
+    "codePathLocal": "main.py",
+    "codePath": "main.py",
+    "git": {
+        "remote": "https://github.com/Elotmanix/NEMOT.git",
+        "commit": "03264b43ce4f2a6c30dc9fbb7a4970e89ca55c14"
+    },
+    "email": "hamza.quarc@gmail.com",
+    "root": "C:/Users/dell/OneDrive/Bureau/NEMOT/NMOT",
+    "host": "DESKTOP-MLTJ2QD",
+    "username": null,
+    "executable": "C:\\Users\\dell\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+    "cpu_count": 4,
+    "cpu_count_logical": 8,
+    "cpu_freq": {
+        "current": 1496.0,
+        "min": 0.0,
+        "max": 1896.0
+    },
+    "cpu_freq_per_core": [
+        {
+            "current": 1496.0,
+            "min": 0.0,
+            "max": 1896.0
+        }
+    ],
+    "disk": {
+        "/": {
+            "total": 255365890048,
+            "used": 231365877760
+        }
+    },
+    "memory": {
+        "total": 16943763456
+    }
+}

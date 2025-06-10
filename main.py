@@ -28,6 +28,7 @@ def main():
     X = gen_data(params)
 
     if params.alg == 'ne_mot':
+        X = torch.from_numpy(X).float()
         dim = X.shape[1]
         X = X.to(device)
         MOT_agent = MOT_NE_alg(params, device, dim)

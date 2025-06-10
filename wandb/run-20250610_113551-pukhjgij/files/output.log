@@ -1,0 +1,55 @@
+Using cpu
+Simultion Parameters:
+====================
+run            : runtime_sweep
+experiment     : runtime_comparison_coulomb_uniform
+batch_size     : 32
+epochs         : 25
+lr             : 0.0001
+n              : 100
+k              : 4
+eps            : 0.1
+cost           : coulomb
+alg            : ne_mot
+hidden_dim     : 32
+mod            : mot
+seed           : 2
+data_dist      : uniform
+dataset        : mnist
+gauss_std      : 1
+dim            : 1
+device         : gpu
+cuda_visible   : 3
+using_wandb    : 1
+cost_graph     : full
+cost_implement : simplified
+enc_dim        : 784
+wandb_entity   : your_wandb_entity
+schedule       : 1
+schedule_step  : 5
+schedule_gamma : 0.5
+clip_grads     : 1
+max_grad_norm  : 0.001
+check_P_sum    : 0
+euler          : 0
+regularize_pariwise_coupling: 0
+regularize_pariwise_coupling_reg: 10.0
+normalize_plan : 0
+calc_ot_cost   : 1
+tree_ord       : pre
+tree_type      : bin
+gw_same_n      : 1
+gw_use_convex_eps: 1
+save_results   : True
+quiet          : False
+wandb_project_name: NMOT_Runtime_Comparison
+figDir         : results/runtime_sweep/ne_mot/k_4/n_100/eps_0.1/_stamp_2025-06-10_11-35-46
+dims           : [1, 1, 1, 1]
+====================
+Traceback (most recent call last):
+  File "C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\main.py", line 49, in <module>
+    main()
+  File "C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\main.py", line 32, in main
+    X = X.to(device)
+        ^^^^
+AttributeError: 'numpy.ndarray' object has no attribute 'to'

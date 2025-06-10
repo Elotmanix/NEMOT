@@ -1,0 +1,167 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    python_version: 3.12.0
+    cli_version: 0.19.11
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: true
+    start_time: 1749551778
+    t:
+      1:
+      - 1
+      - 5
+      - 12
+      - 41
+      - 53
+      - 55
+      2:
+      - 1
+      - 5
+      - 12
+      - 41
+      - 53
+      - 55
+      3:
+      - 14
+      - 16
+      - 23
+      - 37
+      4: 3.12.0
+      5: 0.19.11
+      8:
+      - 2
+      - 3
+      - 5
+      13: windows-amd64
+run:
+  desc: null
+  value: runtime_sweep
+experiment:
+  desc: null
+  value: runtime_comparison_coulomb_uniform
+batch_size:
+  desc: null
+  value: 32
+epochs:
+  desc: null
+  value: 25
+lr:
+  desc: null
+  value: 0.0001
+n:
+  desc: null
+  value: 100
+k:
+  desc: null
+  value: 4
+eps:
+  desc: null
+  value: 0.1
+cost:
+  desc: null
+  value: coulomb
+alg:
+  desc: null
+  value: ne_mot
+hidden_dim:
+  desc: null
+  value: 32
+mod:
+  desc: null
+  value: mot
+seed:
+  desc: null
+  value: 3
+data_dist:
+  desc: null
+  value: uniform
+dataset:
+  desc: null
+  value: mnist
+gauss_std:
+  desc: null
+  value: 1
+dim:
+  desc: null
+  value: 1
+device:
+  desc: null
+  value: gpu
+cuda_visible:
+  desc: null
+  value: 3
+using_wandb:
+  desc: null
+  value: 1
+cost_graph:
+  desc: null
+  value: full
+cost_implement:
+  desc: null
+  value: simplified
+enc_dim:
+  desc: null
+  value: 784
+wandb_entity:
+  desc: null
+  value: your_wandb_entity
+schedule:
+  desc: null
+  value: 1
+schedule_step:
+  desc: null
+  value: 5
+schedule_gamma:
+  desc: null
+  value: 0.5
+clip_grads:
+  desc: null
+  value: 1
+max_grad_norm:
+  desc: null
+  value: 0.001
+check_P_sum:
+  desc: null
+  value: 0
+euler:
+  desc: null
+  value: 0
+regularize_pariwise_coupling:
+  desc: null
+  value: 0
+regularize_pariwise_coupling_reg:
+  desc: null
+  value: 10.0
+normalize_plan:
+  desc: null
+  value: 0
+calc_ot_cost:
+  desc: null
+  value: 1
+tree_ord:
+  desc: null
+  value: pre
+tree_type:
+  desc: null
+  value: bin
+gw_same_n:
+  desc: null
+  value: 1
+gw_use_convex_eps:
+  desc: null
+  value: 1
+save_results:
+  desc: null
+  value: true
+quiet:
+  desc: null
+  value: false
+wandb_project_name:
+  desc: null
+  value: NMOT_Runtime_Comparison
+figDir:
+  desc: null
+  value: results/runtime_sweep/ne_mot/k_4/n_100/eps_0.1/_stamp_2025-06-10_11-36-13
