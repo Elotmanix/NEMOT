@@ -54,12 +54,6 @@ def gen_data(params, dataset=None):
 
     else:
         raise ValueError(f"Unsupported data distribution: {params.data_dist} or dataset: {params.dataset}")
-            MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
-            return X, MU
-        elif params['alg'] == 'ne_mot':
-            X = torch.from_numpy(np.stack(X, axis=-1))
-            X = [torch.from_numpy(x) for x in X]
-            return X
 
 
 def CoulombCost(data):
