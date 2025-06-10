@@ -12,39 +12,48 @@ import torchvision.transforms.functional as TF
 
 
 def gen_data(params, dataset=None):
-    if params.dataset == 'mnist':
+    if params.data_dist == 'uniform':
+        if params['euler'] == 1:
+            '''
+            generate data on a sphere
+            '''
+            X = np.random.randn(params['n'], params['dim'] + 1)
+            X /= np.linalg.norm(X, axis=-1)[:, np.newaxis]
+            X = X.T
+            X = np.array([X] * params['k'])
+            X = X.transpose(2, 1, 0)
+
+        else:
+            X = [np.random.rand(params['n'], params['dim']) for i in range(params['k'])]
+            X = np.array(X)
+            X = X.transpose(1, 2, 0)
+
+        if params['alg'] == 'sinkhorn_mot':
+            n = X.shape[0]
+            MU = [(1 / n) * np.ones(n)] * params['k']
+            return X, MU
+        return X
+
+    elif params.data_dist == 'gaussian':
+        X = [np.random.randn(params['n'], params['dim']) * params['gauss_std'] for i in range(params['k'])]
+        X = np.array(X)
+        X = X.transpose(1, 2, 0)
+        if params['alg'] == 'sinkhorn_mot':
+            n = X.shape[0]
+            MU = [(1 / n) * np.ones(n)] * params['k']
+            return X, MU
+        return X
+
+    elif params.dataset == 'mnist':
         X = gen_mnist_tensor(params)
         if params['alg'] == 'sinkhorn_mot':
             n = X.shape[0]
             MU = [(1 /n) * np.ones(n)]*params['k']
             return X, MU
         return X
+
     else:
-        if params['data_dist'] == 'uniform':
-
-            if params['euler'] == 1:
-                '''
-                generate euler flow samples - n evenly spaces samples along [0,1]
-                '''
-                X = [np.linspace(0, 1, params['n'], dtype=np.float32).reshape(params['n'], 1).astype(np.float32)]*params['k']
-            else:
-                # generate k samples which are d-dimensional with n samples (from Taos's notebook)
-                X = []
-                for i in range(params['k']):
-                    X.append(np.random.uniform(-1/np.sqrt(params['dims'][i]),1/np.sqrt(params['dims'][i]),(params['n'],params['dims'][i])).astype(np.float32))
-
-        elif params['data_dist'] == 'gauss':
-            X = []
-            for i in range(params['k']):
-                std = params.gauss_std/np.sqrt(params['dims'][i])
-                X.append(
-                    std*np.random.normal(size=(params['n'], params['dims'][i])).astype(np.float32)
-                    # np.random.uniform(-1 / np.sqrt(params['dims'][i]), 1 / np.sqrt(params['dims'][i]),
-                    #                        (params['n'], params['dims'][i])).astype(np.float32)
-                )
-
-        if params['alg'] != 'ne_mot':
-            X = np.stack(X, axis=-1)
+        raise ValueError(f"Unsupported data distribution: {params.data_dist} or dataset: {params.dataset}")
             MU = [(1 / params['n']) * np.ones(params['n'])]*params['k']
             return X, MU
         elif params['alg'] == 'ne_mot':

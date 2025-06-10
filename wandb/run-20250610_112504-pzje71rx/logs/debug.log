@@ -1,0 +1,24 @@
+2025-06-10 11:25:04,901 INFO    MainThread:3828 [wandb_setup.py:_flush():70] Current SDK version is 0.19.11
+2025-06-10 11:25:04,902 INFO    MainThread:3828 [wandb_setup.py:_flush():70] Configure stats pid to 3828
+2025-06-10 11:25:04,902 INFO    MainThread:3828 [wandb_setup.py:_flush():70] Loading settings from C:\Users\dell\.config\wandb\settings
+2025-06-10 11:25:04,903 INFO    MainThread:3828 [wandb_setup.py:_flush():70] Loading settings from C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\settings
+2025-06-10 11:25:04,904 INFO    MainThread:3828 [wandb_setup.py:_flush():70] Loading settings from environment variables
+2025-06-10 11:25:04,904 INFO    MainThread:3828 [wandb_init.py:setup_run_log_directory():724] Logging user logs to C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_112504-pzje71rx\logs\debug.log
+2025-06-10 11:25:04,906 INFO    MainThread:3828 [wandb_init.py:setup_run_log_directory():725] Logging internal logs to C:\Users\dell\OneDrive\Bureau\NEMOT\NMOT\wandb\run-20250610_112504-pzje71rx\logs\debug-internal.log
+2025-06-10 11:25:04,906 INFO    MainThread:3828 [wandb_init.py:init():852] calling init triggers
+2025-06-10 11:25:04,908 INFO    MainThread:3828 [wandb_init.py:init():857] wandb.init called with sweep_config: {'alg': 'ne_mot', 'batch_size': 32, 'cost': 'coulomb', 'data_dist': 'uniform', 'dim': 1, 'epochs': 25, 'eps': 0.1, 'experiment': 'runtime_comparison_coulomb_uniform', 'k': 3, 'lr': 0.0005, 'n': 500, 'run': 'runtime_sweep', 'seed': 3, 'using_wandb': 1, 'wandb_project_name': 'NMOT_Runtime_Comparison'}
+config: {'run': 'runtime_sweep', 'experiment': 'runtime_comparison_coulomb_uniform', 'batch_size': 32, 'epochs': 25, 'lr': 0.0005, 'n': 500, 'k': 3, 'eps': 0.1, 'cost': 'coulomb', 'alg': 'ne_mot', 'hidden_dim': 32, 'mod': 'mot', 'seed': 3, 'data_dist': 'uniform', 'dataset': 'mnist', 'gauss_std': 1, 'dim': 1, 'device': 'gpu', 'cuda_visible': 3, 'using_wandb': 1, 'cost_graph': 'full', 'cost_implement': 'simplified', 'enc_dim': 784, 'wandb_entity': 'your_wandb_entity', 'schedule': 1, 'schedule_step': 5, 'schedule_gamma': 0.5, 'clip_grads': 1, 'max_grad_norm': 0.001, 'check_P_sum': 0, 'euler': 0, 'regularize_pariwise_coupling': 0, 'regularize_pariwise_coupling_reg': 10.0, 'normalize_plan': 0, 'calc_ot_cost': 1, 'tree_ord': 'pre', 'tree_type': 'bin', 'gw_same_n': 1, 'gw_use_convex_eps': 1, 'save_results': True, 'quiet': False, 'wandb_project_name': 'NMOT_Runtime_Comparison', 'figDir': 'results/runtime_sweep/ne_mot/k_3/n_500/eps_0.1/_stamp_2025-06-10_11-24-59', '_wandb': {}}
+2025-06-10 11:25:04,908 INFO    MainThread:3828 [wandb_init.py:init():893] starting backend
+2025-06-10 11:25:04,908 INFO    MainThread:3828 [wandb_init.py:init():897] sending inform_init request
+2025-06-10 11:25:05,000 INFO    MainThread:3828 [backend.py:_multiprocessing_setup():101] multiprocessing start_methods=spawn, using: spawn
+2025-06-10 11:25:05,000 INFO    MainThread:3828 [wandb_init.py:init():907] backend started and connected
+2025-06-10 11:25:05,002 INFO    MainThread:3828 [wandb_run.py:_config_callback():1436] config_cb None None {'alg': 'ne_mot', 'batch_size': 32, 'cost': 'coulomb', 'data_dist': 'uniform', 'dim': 1, 'epochs': 25, 'eps': 0.1, 'experiment': 'runtime_comparison_coulomb_uniform', 'k': 3, 'lr': 0.0005, 'n': 500, 'run': 'runtime_sweep', 'seed': 3, 'using_wandb': 1, 'wandb_project_name': 'NMOT_Runtime_Comparison'}
+2025-06-10 11:25:05,005 INFO    MainThread:3828 [wandb_init.py:init():1005] updated telemetry
+2025-06-10 11:25:05,087 INFO    MainThread:3828 [wandb_init.py:init():1029] communicating run to backend with 90.0 second timeout
+2025-06-10 11:25:05,827 INFO    MainThread:3828 [wandb_init.py:init():1104] starting run threads in backend
+2025-06-10 11:25:06,582 INFO    MainThread:3828 [wandb_run.py:_console_start():2573] atexit reg
+2025-06-10 11:25:06,583 INFO    MainThread:3828 [wandb_run.py:_redirect():2421] redirect: wrap_raw
+2025-06-10 11:25:06,584 INFO    MainThread:3828 [wandb_run.py:_redirect():2490] Wrapping output streams.
+2025-06-10 11:25:06,584 INFO    MainThread:3828 [wandb_run.py:_redirect():2513] Redirects installed.
+2025-06-10 11:25:06,591 INFO    MainThread:3828 [wandb_init.py:init():1150] run started, returning control to user process
+2025-06-10 11:25:06,943 INFO    MsgRouterThr:3828 [mailbox.py:close():129] [no run ID] Closing mailbox, abandoning 1 handles.
